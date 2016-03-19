@@ -12,6 +12,7 @@ import org.broadinstitute.hellbender.cmdline.Argument;
 import org.broadinstitute.hellbender.cmdline.CommandLineParser;
 import org.broadinstitute.hellbender.cmdline.CommandLineProgramProperties;
 import org.broadinstitute.hellbender.cmdline.programgroups.ReadProgramGroup;
+import org.broadinstitute.hellbender.exceptions.UserException;
 import org.broadinstitute.hellbender.utils.read.GATKRead;
 import org.broadinstitute.hellbender.utils.test.BaseTest;
 import org.testng.Assert;
@@ -143,6 +144,15 @@ public final class GATKToolUnitTest extends BaseTest{
 
         // This method would throw if sequence dictionary validation failed. Here we are testing
         // that it does not throw despite the lexicographically-sorted sequence dictionary in the vcf.
+        tool.onStartup();
+    }
+
+    @Test(expectedExceptions = UserException.MissingReference.class)
+    public void testNonExistentReferenceFile() throws Exception {
+        final TestGATKToolWithFeatures tool = new TestGATKToolWithFeatures();
+        final CommandLineParser clp = new CommandLineParser(tool);
+        final String[] args = {"--reference", "NonExistentReferenceFile.fasta"};
+        clp.parseArguments(System.out, args);
         tool.onStartup();
     }
 

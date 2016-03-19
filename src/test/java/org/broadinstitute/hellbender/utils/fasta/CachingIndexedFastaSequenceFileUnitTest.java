@@ -210,4 +210,11 @@ public final class CachingIndexedFastaSequenceFileUnitTest extends BaseTest {
             fetchBaseString(fasta, contig.getSequenceName(), -1, -1);
         }
     }
+
+    @Test(expectedExceptions = {UserException.MissingReference.class})
+    public void testNonexistentReference() throws FileNotFoundException, InterruptedException {
+        final String testFasta = "NonexistentReference.fasta";
+        final CachingIndexedFastaSequenceFile fasta = CachingIndexedFastaSequenceFile.checkAndCreate(new File(testFasta));
+    }
+
 }

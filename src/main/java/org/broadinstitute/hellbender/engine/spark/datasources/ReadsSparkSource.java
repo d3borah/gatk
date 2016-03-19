@@ -238,7 +238,17 @@ public final class ReadsSparkSource implements Serializable {
                     throw new UserException("A 2bit file cannot be used as a CRAM file reference");
                 }
                 else { // Hadoop-BAM requires the reference to be a URI, including scheme
-                    String referenceURI = null ==  new Path(referenceName).toUri().getScheme() ?
+                    Path refPath = new Path(referenceName);
+                    try {
+                        FileSystem fs = refPath.getFileSystem(ctx.hadoopConfiguration());
+                        if (!fs.exists(refPath)) {
+                            throw new UserException.MissingReference("The specified fasta file (" + referenceName + ") does not exist.");
+                        }
+                    }
+                    catch (IOException e) {
+                        throw new UserException("Error validating existence of reference file " + referenceName + ": " + e.getMessage());
+                    }
+                    String referenceURI = null == refPath.toUri().getScheme() ?
                             "file://" + new File(referenceName).getAbsolutePath() :
                             referenceName;
                     conf.set(CRAMInputFormat.REFERENCE_SOURCE_PATH_PROPERTY, referenceURI);

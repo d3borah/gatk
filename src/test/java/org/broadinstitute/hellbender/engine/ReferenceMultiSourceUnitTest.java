@@ -4,6 +4,7 @@ import com.google.cloud.dataflow.sdk.options.PipelineOptions;
 import org.apache.spark.SparkConf;
 import org.broadinstitute.hellbender.engine.datasources.ReferenceMultiSource;
 import org.broadinstitute.hellbender.engine.datasources.ReferenceWindowFunctions;
+import org.broadinstitute.hellbender.exceptions.UserException;
 import org.broadinstitute.hellbender.utils.test.SparkTestUtils;
 import org.broadinstitute.hellbender.utils.test.BaseTest;
 import org.testng.Assert;
@@ -15,7 +16,7 @@ public class ReferenceMultiSourceUnitTest extends BaseTest {
 
     @Test
     public void testSerializeRoundTrip2Bit() {
-        PipelineOptions options =null;
+        PipelineOptions options = null;
         ReferenceMultiSource referenceMultiSource = new ReferenceMultiSource(options, twoBitRefURL, ReferenceWindowFunctions.IDENTITY_FUNCTION);
 
         final ReferenceMultiSource roundTrippedReference = SparkTestUtils.roundTripInKryo(referenceMultiSource, ReferenceMultiSource.class, new SparkConf());
@@ -23,6 +24,13 @@ public class ReferenceMultiSourceUnitTest extends BaseTest {
         Assert.assertEquals(roundTrippedReference.getReferenceSequenceDictionary(null), referenceMultiSource.getReferenceSequenceDictionary(null),
                 "\nActual ref: " + roundTrippedReference.getReferenceSequenceDictionary(null) + "\nExpected ref: " + referenceMultiSource.getReferenceSequenceDictionary(null));
         Assert.assertNotNull(roundTrippedReference.getReferenceWindowFunction());
+    }
+
+    @Test(expectedExceptions = UserException.MissingReference.class)
+    public void testBadReferenceFile() {
+        PipelineOptions options = null;
+        ReferenceMultiSource referenceMultiSource = new ReferenceMultiSource(options,
+                "NonExistentReference.fasta", ReferenceWindowFunctions.IDENTITY_FUNCTION);
     }
 
 }

@@ -12,6 +12,7 @@ import org.apache.commons.lang3.tuple.MutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.broadinstitute.hellbender.exceptions.GATKException;
 import org.broadinstitute.hellbender.utils.*;
 
 import java.io.File;
@@ -87,40 +88,109 @@ public final class GATKVariantContextUtils {
     public static GenotypesContext subsetDiploidAlleles(final VariantContext vc,
                                                         final List<Allele> allelesToUse,
                                                         final GenotypeAssignmentMethod assignGenotypes) {
+        Utils.nonNull(vc, "VariantContext is null");
         Utils.nonNull(allelesToUse, "allelesToUse is null");
         if ( allelesToUse.get(0).isNonReference() ) throw new IllegalArgumentException("First allele must be the reference allele");
         if ( allelesToUse.size() == 1 ) throw new IllegalArgumentException("Cannot subset to only 1 alt allele");
 
+        // find the likelihoods indexes to use from the used alternate alleles
+        final List<Integer> likelihoodIndexesToUse = determineDiploidLikelihoodIndexesToUse(vc, allelesToUse);
+
         // optimization: if no input genotypes, just exit
         if (vc.getGenotypes().isEmpty()) return GenotypesContext.create();
 
-        // we need to determine which of the alternate alleles (and hence the likelihoods) to use and carry forward
-        final List<Integer> likelihoodIndexesToUse = determineLikelihoodIndexesToUse(vc, allelesToUse);
+        // find the likelihoods indexes to use from the used alternate alleles
+        final List<Integer> sacIndexesToUse = determineSACIndexesToUse(vc, allelesToUse);
 
         // create the new genotypes
-        return createGenotypesWithSubsettedLikelihoods(vc.getGenotypes(), vc, allelesToUse, likelihoodIndexesToUse, assignGenotypes);
+        return createGenotypesWithSubsettedLikelihoods(vc.getGenotypes(), vc, allelesToUse, likelihoodIndexesToUse, sacIndexesToUse, assignGenotypes);
+    }
+
+
+    /**
+     * Find the likelihood indexes to use for a selected set of diploid alleles
+     *
+     * @param originalVC        the original VariantContext
+     * @param allelesToUse      the subset of alleles to use
+     * @return a list of PL indexes to use or null if none
+     */
+    private static List<Integer> determineDiploidLikelihoodIndexesToUse(final VariantContext originalVC, final List<Allele> allelesToUse) {
+
+        Utils.nonNull(originalVC, "VariantContext is null");
+        Utils.nonNull(allelesToUse, "allelesToUse is null");
+
+        // the bitset representing the allele indexes we want to keep
+        final boolean[] alleleIndexesToUse = getAlleleIndexBitset(originalVC, allelesToUse);
+
+        // an optimization: if we are supposed to use all (or none in the case of a ref call) of the alleles,
+        // then we can keep the PLs as is; otherwise, we determine which ones to keep
+        if ( MathUtils.countOccurrences(true, alleleIndexesToUse) == alleleIndexesToUse.length )
+            return null;
+
+        return getDiploidLikelihoodIndexes(originalVC, alleleIndexesToUse);
     }
 
     /**
-     * Create the new GenotypesContext with the subsetted PLs and ADs
+     * Get the actual likelihoods indexes to use given the corresponding diploid allele indexes
+     *
+     * @param originalVC           the original VariantContext
+     * @param alleleIndexesToUse   the bitset representing the alleles to use (@see #getAlleleIndexBitset)
+     * @return a non-null List
+     * @throws GATKException if the original VariantContext contains a genotype that is not dipliid
+     */
+    private static List<Integer> getDiploidLikelihoodIndexes(final VariantContext originalVC, final boolean[] alleleIndexesToUse) {
+
+        Utils.nonNull(originalVC, "VariantContext is null");
+        Utils.nonNull(alleleIndexesToUse, "alleleIndexesToUse is null");
+
+        // All samples must be diploid
+        for ( final Genotype g : originalVC.getGenotypes() ){
+            if ( g.getPloidy() != DEFAULT_PLOIDY )
+                throw new GATKException("All samples must be diploid");
+        }
+
+        final List<Integer> result = new ArrayList<>(30);
+
+        // numLikelihoods takes total # of alleles.
+        final int numLikelihoods = GenotypeLikelihoods.numLikelihoods(originalVC.getNAlleles(), DEFAULT_PLOIDY);
+
+        for ( int PLindex = 0; PLindex < numLikelihoods; PLindex++ ) {
+            final GenotypeLikelihoods.GenotypeLikelihoodsAllelePair alleles = GenotypeLikelihoods.getAllelePair(PLindex);
+            // consider this entry only if both of the alleles are good
+            if ( alleleIndexesToUse[alleles.alleleIndex1] && alleleIndexesToUse[alleles.alleleIndex2] )
+                result.add(PLindex);
+        }
+
+        return result;
+    }
+
+    /**
+     * Create the new GenotypesContext with the subsetted PLs, SACs and ADs
      *
      * @param originalGs               the original GenotypesContext
-     * @param vc                       the original VariantContext
+     * @param originalVC               the original VariantContext
      * @param allelesToUse             the actual alleles to use with the new Genotypes
-     * @param likelihoodIndexesToUse   the indexes in the PL to use given the allelesToUse (@see #determineLikelihoodIndexesToUse())
+     * @param likelihoodIndexesToUse   the indexes in the PL to use given the allelesToUse (@see #determineDiploidLikelihoodIndexesToUse())
+     * @param sacIndexesToUse          the indexes in the SAC to use given the allelesToUse (@see #determineSACIndexesToUse())
      * @param assignGenotypes          assignment strategy for the (subsetted) PLs
      * @return a new non-null GenotypesContext
      */
     private static GenotypesContext createGenotypesWithSubsettedLikelihoods(final GenotypesContext originalGs,
-                                                                            final VariantContext vc,
+                                                                            final VariantContext originalVC,
                                                                             final List<Allele> allelesToUse,
                                                                             final List<Integer> likelihoodIndexesToUse,
+                                                                            final List<Integer> sacIndexesToUse,
                                                                             final GenotypeAssignmentMethod assignGenotypes) {
+
+        Utils.nonNull(originalGs, "GenotypesContext is null");
+        Utils.nonNull(originalVC, "VariantContext is null");
+        Utils.nonNull(allelesToUse, "Alleles to use is null");
+
         // the new genotypes to create
         final GenotypesContext newGTs = GenotypesContext.create(originalGs.size());
 
         // make sure we are seeing the expected number of likelihoods per sample
-        final int expectedNumLikelihoods = GenotypeLikelihoods.numLikelihoods(vc.getNAlleles(), 2);
+        final int expectedNumLikelihoods = GenotypeLikelihoods.numLikelihoods(originalVC.getNAlleles(), 2);
 
         // the samples
         final List<String> sampleIndices = originalGs.getSampleNamesOrderedByName();
@@ -130,7 +200,7 @@ public final class GATKVariantContextUtils {
             final Genotype g = originalGs.get(sampleIndices.get(k));
             final GenotypeBuilder gb = new GenotypeBuilder(g);
 
-            // create the new likelihoods array from the alleles we are allowed to use
+            // create the new likelihoods array from the used alleles
             double[] newLikelihoods;
             if ( !g.hasLikelihoods() ) {
                 // we don't have any likelihoods, so we null out PLs and make G ./.
@@ -141,7 +211,7 @@ public final class GATKVariantContextUtils {
                 if ( likelihoodIndexesToUse == null ) {
                     newLikelihoods = originalLikelihoods;
                 } else if ( originalLikelihoods.length != expectedNumLikelihoods ) {
-                    logger.debug("Wrong number of likelihoods in sample " + g.getSampleName() + " at " + vc + " got " + g.getLikelihoodsString() + " but expected " + expectedNumLikelihoods);
+                    logger.debug("Wrong number of likelihoods in sample " + g.getSampleName() + " at " + originalVC + " got " + g.getLikelihoodsString() + " but expected " + expectedNumLikelihoods);
                     newLikelihoods = null;
                 } else {
                     newLikelihoods = new double[likelihoodIndexesToUse.size()];
@@ -159,11 +229,17 @@ public final class GATKVariantContextUtils {
                     gb.PL(newLikelihoods);
             }
 
+            // create the new strand allele counts array from the used alleles
+            if ( g.hasExtendedAttribute(GATKVCFConstants.STRAND_COUNT_BY_SAMPLE_KEY)){
+                int[] newSACs = makeNewSACs(g, sacIndexesToUse);
+                gb.attribute(GATKVCFConstants.STRAND_COUNT_BY_SAMPLE_KEY, newSACs);
+            }
+
             updateGenotypeAfterSubsetting(g.getAlleles(), gb, assignGenotypes, newLikelihoods, allelesToUse);
             newGTs.add(gb.make());
         }
 
-        return fixADFromSubsettedAlleles(newGTs, vc, allelesToUse);
+        return fixADFromSubsettedAlleles(newGTs, originalVC, allelesToUse);
     }
 
     /**
@@ -181,8 +257,8 @@ public final class GATKVariantContextUtils {
      * @return {@code true} if there is an overlap between the event described and the active region provided.
      */
     public static boolean overlapsRegion(final VariantContext variantContext, final GenomeLoc region) {
-        if (region == null) throw new IllegalArgumentException("the active region provided cannot be null");
-        if (variantContext == null) throw new IllegalArgumentException("the variant context provided cannot be null");
+        Utils.nonNull(variantContext, "VariantContext is null");
+        Utils.nonNull(region, "Active region is null");
         if (region.isUnmapped())
             return false;
         if (variantContext.getEnd() < region.getStart())
@@ -203,8 +279,8 @@ public final class GATKVariantContextUtils {
      * @return {@code true} if there is an overlap between the event described and the active region provided.
      */
     public static boolean overlapsRegion(final VariantContext variantContext, final SimpleInterval region) {
-        if (region == null) throw new IllegalArgumentException("the active region provided cannot be null");
-        if (variantContext == null) throw new IllegalArgumentException("the variant context provided cannot be null");
+        Utils.nonNull(variantContext, "VariantContext is null");
+        Utils.nonNull(region, "Active region is null");
         if (variantContext.getEnd() < region.getStart())
             return false;
         if (variantContext.getStart() > region.getEnd())
@@ -260,8 +336,7 @@ public final class GATKVariantContextUtils {
      * @return never {@code null}.
      */
     public static int totalPloidy(final VariantContext vc, final int defaultPloidy) {
-        if (vc == null)
-            throw new IllegalArgumentException("the vc provided cannot be null");
+        Utils.nonNull(vc, "VariantContext is null");
         if (defaultPloidy < 0)
             throw new IllegalArgumentException("the default ploidy must 0 or greater");
         int result = 0;
@@ -930,48 +1005,59 @@ public final class GATKVariantContextUtils {
     }
 
     /**
-     * Updates the PLs and AD of the Genotypes in the newly selected VariantContext to reflect the fact that some alleles
+     * Updates the PLs, SACs and AD of the Genotypes in the newly selected VariantContext to reflect the fact that some alleles
      * from the original VariantContext are no longer present.
      *
      * @param selectedVC  the selected (new) VariantContext
      * @param originalVC  the original VariantContext
      * @return a new non-null GenotypesContext
      */
-    public static GenotypesContext updatePLsAndAD(final VariantContext selectedVC, final VariantContext originalVC) {
+    public static GenotypesContext updatePLsSACsAD(final VariantContext selectedVC, final VariantContext originalVC) {
+
+        Utils.nonNull(selectedVC, "selected VariantContext is null");
+        Utils.nonNull(originalVC, "original VariantContext is null");;
+
         final int numNewAlleles = selectedVC.getAlleles().size();
         final int numOriginalAlleles = originalVC.getAlleles().size();
 
         // if we have more alternate alleles in the selected VC than in the original VC, then something is wrong
-        if ( numNewAlleles > numOriginalAlleles ) {
-            throw new IllegalArgumentException("Attempting to fix PLs and AD from what appears to be a *combined* VCF and not a selected one");
-        }
+        if ( numNewAlleles > numOriginalAlleles )
+            throw new IllegalArgumentException("Attempting to fix PLs, SACs and AD from what appears to be a *combined* VCF and not a selected one");
 
         final GenotypesContext oldGs = selectedVC.getGenotypes();
 
         // if we have the same number of alternate alleles in the selected VC as in the original VC, then we don't need to fix anything
-        if ( numNewAlleles == numOriginalAlleles ) {
+        if ( numNewAlleles == numOriginalAlleles )
             return oldGs;
-        }
 
-        return fixGenotypesFromSubsettedAlleles(oldGs, originalVC, selectedVC.getAlleles());
+        return fixDiploidGenotypesFromSubsettedAlleles(oldGs, originalVC, selectedVC.getAlleles());
     }
 
+
     /**
-     * Fix the PLs and ADs for the GenotypesContext of a VariantContext that has been subset
+     * Fix the PLs, SACs and ADs for the GenotypesContext of a VariantContext that has been subset
      *
      * @param originalGs       the original GenotypesContext
      * @param originalVC       the original VariantContext
      * @param allelesToUse     the new (sub)set of alleles to use
      * @return a new non-null GenotypesContext
      */
-    static private GenotypesContext fixGenotypesFromSubsettedAlleles(final GenotypesContext originalGs, final VariantContext originalVC, final List<Allele> allelesToUse) {
+    static private GenotypesContext fixDiploidGenotypesFromSubsettedAlleles(final GenotypesContext originalGs, final VariantContext originalVC, final List<Allele> allelesToUse) {
 
-        // we need to determine which of the alternate alleles (and hence the likelihoods) to use and carry forward
-        final List<Integer> likelihoodIndexesToUse = determineLikelihoodIndexesToUse(originalVC, allelesToUse);
+        Utils.nonNull(originalGs, "GenotypesContext is null");
+        Utils.nonNull(originalVC, "VariantContext is null");
+        Utils.nonNull(allelesToUse, "Alleles to use is null");
+
+        // find the likelihoods indexes to use from the used alternate alleles
+        final List<Integer> likelihoodIndexesToUse = determineDiploidLikelihoodIndexesToUse(originalVC, allelesToUse);
+
+        // find the strand allele count indexes to use from the used alternate alleles
+        final List<Integer> sacIndexesToUse = determineSACIndexesToUse(originalVC, allelesToUse);
 
         // create the new genotypes
-        return createGenotypesWithSubsettedLikelihoods(originalGs, originalVC, allelesToUse, likelihoodIndexesToUse, GenotypeAssignmentMethod.DO_NOT_ASSIGN_GENOTYPES);
+        return createGenotypesWithSubsettedLikelihoods(originalGs, originalVC, allelesToUse, likelihoodIndexesToUse, sacIndexesToUse, GenotypeAssignmentMethod.DO_NOT_ASSIGN_GENOTYPES);
     }
+
     /**
      * Figure out which likelihood indexes to use for a selected down set of alleles
      *
@@ -1026,7 +1112,7 @@ public final class GATKVariantContextUtils {
      * @param allelesToUse     the new (sub)set of alleles to use
      * @return a new non-null GenotypesContext
      */
-    private static GenotypesContext fixADFromSubsettedAlleles(final GenotypesContext originalGs, final VariantContext originalVC, final List<Allele> allelesToUse) {
+    public static GenotypesContext fixADFromSubsettedAlleles(final GenotypesContext originalGs, final VariantContext originalVC, final List<Allele> allelesToUse) {
 
         // the bitset representing the allele indexes we want to keep
         final boolean[] alleleIndexesToUse = getAlleleIndexBitset(originalVC, allelesToUse);
@@ -1149,6 +1235,106 @@ public final class GATKVariantContextUtils {
         }
 
         return alleleIndexesToKeep;
+    }
+
+    /**
+     * Find the strand allele count indexes to use for a selected set of alleles
+     *
+     * @param originalVC   the original VariantContext
+     * @param allelesToUse the subset of alleles to use
+     * @return a list of SAC indexes to use or null if none
+     */
+    public static List<Integer> determineSACIndexesToUse(final VariantContext originalVC, final List<Allele> allelesToUse) {
+
+        Utils.nonNull(originalVC, "VariantContext is null");
+        Utils.nonNull(allelesToUse, "Alleles to use is null");
+
+        // the bitset representing the allele indexes we want to keep
+        final boolean[] alleleIndexesToUse = getAlleleIndexBitset(originalVC, allelesToUse);
+
+        // an optimization: if we are supposed to use all (or none in the case of a ref call) of the alleles,
+        // then we can keep the SACs as is; otherwise, we determine which ones to keep
+        if (MathUtils.countOccurrences(true, alleleIndexesToUse) == alleleIndexesToUse.length)
+            return null;
+
+        return getSACIndexes(alleleIndexesToUse);
+    }
+
+    /**
+     * Get the actual strand aleele counts indexes to use given the corresponding allele indexes
+     *
+     * @param alleleIndexesToUse    the bitset representing the alleles to use (@see #getAlleleIndexBitset)
+     * @return a non-null List
+     */
+    private static List<Integer> getSACIndexes(final boolean[] alleleIndexesToUse) {
+
+        Utils.nonNull(alleleIndexesToUse, "Alleles to use is null");
+        if (alleleIndexesToUse.length == 0) throw new IllegalArgumentException("cannot have no alleles to use");
+
+        final List<Integer> result = new ArrayList<>(2 * alleleIndexesToUse.length);
+
+        for (int SACindex = 0; SACindex < alleleIndexesToUse.length; SACindex++) {
+            if (alleleIndexesToUse[SACindex]) {
+                result.add(2 * SACindex);
+                result.add(2 * SACindex + 1);
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Make a new SAC array from the a subset of the genotype's original SAC
+     *
+     * @param g               the genotype
+     * @param sacIndexesToUse the indexes in the SAC to use given the allelesToUse (@see #determineSACIndexesToUse())
+     * @return subset of SACs from the original genotype, the original SACs if sacIndexesToUse is null
+     */
+    public static int[] makeNewSACs(final Genotype g, final List<Integer> sacIndexesToUse) {
+
+        Utils.nonNull(g, "Genotype is null");
+
+        final int[] oldSACs  = getSACs(g);
+
+        if (sacIndexesToUse == null) {
+            return oldSACs;
+        } else {
+            final int[] newSACs = new int[sacIndexesToUse.size()];
+            int newIndex = 0;
+            for (final int oldIndex : sacIndexesToUse) {
+                newSACs[newIndex++] = oldSACs[oldIndex];
+            }
+            return newSACs;
+        }
+    }
+
+    /**
+     * Get the genotype SACs
+     *
+     * @param g the genotype
+     * @return an arrays of SACs
+     * @throws GATKException if the type of the SACs is unexpected
+     */
+    private static int[] getSACs(final Genotype g) {
+
+        Utils.nonNull(g, "Genotype is null");
+        if ( !g.hasExtendedAttribute(GATKVCFConstants.STRAND_COUNT_BY_SAMPLE_KEY) )
+            throw new IllegalArgumentException("Genotype must have SAC");
+
+        if ( g.getExtendedAttributes().get(GATKVCFConstants.STRAND_COUNT_BY_SAMPLE_KEY).getClass().equals(String.class) ) {
+            final String SACsString = (String) g.getExtendedAttributes().get(GATKVCFConstants.STRAND_COUNT_BY_SAMPLE_KEY);
+            ArrayList<String> stringSACs = Utils.split(SACsString, ",");
+            final int[] intSACs = new int[stringSACs.size()];
+            int i = 0;
+            for (String sac : stringSACs)
+                intSACs[i++] = Integer.parseInt(sac);
+
+            return intSACs;
+        }
+        else if ( g.getExtendedAttributes().get(GATKVCFConstants.STRAND_COUNT_BY_SAMPLE_KEY).getClass().equals(int[].class) )
+            return (int[]) g.getExtendedAttributes().get(GATKVCFConstants.STRAND_COUNT_BY_SAMPLE_KEY);
+        else
+            throw new GATKException("Unexpected SAC type");
     }
 
     //TODO as part of a larger refactoring effort remapAlleles can be merged with createAlleleMapping.
@@ -1317,7 +1503,7 @@ public final class GATKVariantContextUtils {
      * @return a non-null VariantContext (may be == to inputVC) with trimmed up alleles
      */
     public static VariantContext trimAlleles(final VariantContext inputVC, final boolean trimForward, final boolean trimReverse) {
-        if ( inputVC == null ) throw new IllegalArgumentException("inputVC cannot be null");
+        Utils.nonNull(inputVC, "VariantContext is null");
 
         if ( inputVC.getNAlleles() <= 1 || inputVC.isSNP() )
             return inputVC;
@@ -1539,8 +1725,7 @@ public final class GATKVariantContextUtils {
      * @return a non-empty list of VCs split into primitive parts or the original VC otherwise
      */
     public static List<VariantContext> splitIntoPrimitiveAlleles(final VariantContext vc) {
-        if ( vc == null )
-            throw new IllegalArgumentException("Trying to break a null Variant Context into primitive parts");
+        Utils.nonNull(vc, "VariantContext is null");
 
         if ( !vc.isBiallelic() )
             throw new IllegalArgumentException("Trying to break a multi-allelic Variant Context into primitive parts");
@@ -1623,7 +1808,7 @@ public final class GATKVariantContextUtils {
      * @return {@code -1} if there is no such allele that satify those criteria, a value between 0 and {@link VariantContext#getNAlleles()} {@code -1} otherwise.
      */
     public static int indexOfAllele(final VariantContext vc, final Allele allele, final boolean ignoreRefState, final boolean considerRefAllele, final boolean useEquals) {
-        if (allele == null) throw new IllegalArgumentException();
+        Utils.nonNull(allele, "Allele is null");
         return useEquals ? indexOfEqualAllele(vc,allele,ignoreRefState,considerRefAllele) : indexOfSameAllele(vc,allele,considerRefAllele);
     }
 

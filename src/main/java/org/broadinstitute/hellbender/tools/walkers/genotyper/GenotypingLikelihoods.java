@@ -15,7 +15,7 @@ public final class GenotypingLikelihoods<A extends Allele> implements SampleList
 
     private final GenotypeLikelihoods[] likelihoods;
 
-    private final PloidyModel ploidyModel;
+    private final PloidyList ploidyList;
 
     private final AlleleList<A> alleles;
 
@@ -28,33 +28,33 @@ public final class GenotypingLikelihoods<A extends Allele> implements SampleList
      * </p>
      *
      * @param alleles the genotyping alleles.
-     * @param ploidyModel the ploidy model.
+     * @param ploidyList the ploidy model.
      * @param likelihoods the actual genotype likelihoods, one element per sample.
      *
-     * @throws IllegalArgumentException if any argument is {@code null}, or the number of samples in {@code ploidyModel}
+     * @throws IllegalArgumentException if any argument is {@code null}, or the number of samples in {@code ploidyList}
      *  does not correspond with the number of likelihoods arrays in {@code likelihoods}
      */
-    GenotypingLikelihoods(final AlleleList<A> alleles, final PloidyModel ploidyModel, final List<GenotypeLikelihoods> likelihoods) {
-        Utils.validateArg (ploidyModel.numberOfSamples() ==  likelihoods.size(), "there must be exactly one likelihood set for each sample");
+    GenotypingLikelihoods(final AlleleList<A> alleles, final PloidyList ploidyList, final List<GenotypeLikelihoods> likelihoods) {
+        Utils.validateArg (ploidyList.numberOfSamples() ==  likelihoods.size(), "there must be exactly one likelihood set for each sample");
         this.likelihoods = Utils.nonNull(likelihoods, "the likelihood collection cannot be null").toArray(new GenotypeLikelihoods[likelihoods.size()]);
         likelihoods.stream().forEach(lik -> Utils.nonNull(lik, "no genotype likelihood is allowed to be null"));
         this.alleles = Utils.nonNull(alleles, "allele list cannot be null");
-        this.ploidyModel = Utils.nonNull(ploidyModel, "the ploidy model cannot be null");
+        this.ploidyList = Utils.nonNull(ploidyList, "the ploidy model cannot be null");
     }
 
     @Override
     public int numberOfSamples() {
-        return ploidyModel.numberOfSamples();
+        return ploidyList.numberOfSamples();
     }
 
     @Override
     public int indexOfSample(final String sample) {
-        return ploidyModel.indexOfSample(sample);
+        return ploidyList.indexOfSample(sample);
     }
 
     @Override
     public String getSample(final int sampleIndex) {
-        return ploidyModel.getSample(sampleIndex);
+        return ploidyList.getSample(sampleIndex);
     }
 
     /**
@@ -69,7 +69,7 @@ public final class GenotypingLikelihoods<A extends Allele> implements SampleList
      */
     public int samplePloidy(final int sampleIndex) {
         Utils.validIndex(sampleIndex, numberOfSamples());
-        return ploidyModel.samplePloidy(sampleIndex);
+        return ploidyList.samplePloidy(sampleIndex);
     }
 
     /**

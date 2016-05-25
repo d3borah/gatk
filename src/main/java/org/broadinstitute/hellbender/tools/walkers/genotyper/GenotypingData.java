@@ -11,7 +11,7 @@ import org.broadinstitute.hellbender.utils.genotyper.SampleList;
  */
 public final class GenotypingData<A extends Allele> implements SampleList, AlleleList<A> {
 
-    private final PloidyModel ploidyModel;
+    private final PloidyList ploidyList;
 
     private final ReadLikelihoods<A> likelihoods;
 
@@ -20,18 +20,18 @@ public final class GenotypingData<A extends Allele> implements SampleList, Allel
      * and the read-likelihoods collection.
      *
      *
-     * @param ploidyModel the ploidy model.
+     * @param ploidyList the ploidy model.
      * @param likelihoods the read-likelihoods collection.
      *
-     * @throws IllegalArgumentException if either {@code ploidyModel} or {@code likelihoods} is {@code null},
+     * @throws IllegalArgumentException if either {@code ploidyList} or {@code likelihoods} is {@code null},
      *   or they are not compatible in terms of the samples they contain; their lists must match.
      */
-    public GenotypingData(final PloidyModel ploidyModel, final ReadLikelihoods<A> likelihoods) {
-        Utils.nonNull(ploidyModel, "the ploidy model cannot be null");
+    public GenotypingData(final PloidyList ploidyList, final ReadLikelihoods<A> likelihoods) {
+        Utils.nonNull(ploidyList, "the ploidy model cannot be null");
         Utils.nonNull(likelihoods, "the likelihood object cannot be null");
-        this.ploidyModel = ploidyModel;
+        this.ploidyList = ploidyList;
         this.likelihoods = likelihoods;
-        if (!ploidyModel.asListOfSamples().equals(likelihoods.asListOfSamples())) {
+        if (!ploidyList.asListOfSamples().equals(likelihoods.asListOfSamples())) {
             throw new IllegalArgumentException("sample list are different between ploidy-model and read-likelihood collection, perhaps just the order");
         }
     }
@@ -40,25 +40,25 @@ public final class GenotypingData<A extends Allele> implements SampleList, Allel
      * Returns the ploidy model that corresponds to the data provided.
      * @return never {@code null}.
      */
-    public PloidyModel ploidyModel() {
-        return ploidyModel;
+    public PloidyList ploidyModel() {
+        return ploidyList;
     }
 
     @Override
     public int numberOfSamples() {
-        return ploidyModel.numberOfSamples();
+        return ploidyList.numberOfSamples();
     }
 
     @Override
     public int indexOfSample(final String sample) {
         Utils.nonNull(sample);
-        return ploidyModel.indexOfSample(sample);
+        return ploidyList.indexOfSample(sample);
     }
 
     @Override
     public String getSample(final int sampleIndex) {
         Utils.validateArg(sampleIndex >= 0, "sampleIndex");
-        return ploidyModel.getSample(sampleIndex);
+        return ploidyList.getSample(sampleIndex);
     }
 
     /**

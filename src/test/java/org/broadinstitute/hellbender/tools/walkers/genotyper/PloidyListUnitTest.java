@@ -16,7 +16,7 @@ import java.util.stream.IntStream;
  *
  * @author Valentin Ruano-Rubio &lt;valentin@broadinstitute.org&gt;
  */
-public final class HeterogeneousPloidyModelUnitTest {
+public final class PloidyListUnitTest {
     private static final int[][] PLOIDIES =
             {{1, 1, 1, 1},
              {2, 2, 2, 2},
@@ -33,16 +33,16 @@ public final class HeterogeneousPloidyModelUnitTest {
             sampleNames.add("SAMPLE_" + i);
         final IndexedSampleList sampleList = new IndexedSampleList(sampleNames);
 
-        final PloidyModel ploidyModel = new HeterogeneousPloidyModel(sampleList,ploidies);
+        final PloidyList ploidyList = new PloidyList(sampleList,ploidies);
         final boolean expectedHom = allSame(ploidies);
-        Assert.assertEquals(ploidyModel.isHomogeneous(), expectedHom);
-        Assert.assertEquals(ploidyModel.totalPloidy(), MathUtils.sum(ploidies));
+        Assert.assertEquals(ploidyList.isHomogeneous(), expectedHom);
+        Assert.assertEquals(ploidyList.totalPloidy(), MathUtils.sum(ploidies));
 
         for (int i = 0; i < sampleCount; i++) {
-            Assert.assertEquals(ploidyModel.samplePloidy(i), ploidies[i]);
+            Assert.assertEquals(ploidyList.samplePloidy(i), ploidies[i]);
         }
 
-        SampleListUnitTester.assertSampleList(ploidyModel, sampleNames);
+        SampleListUnitTester.assertSampleList(ploidyList, sampleNames);
     }
 
     private boolean allSame(int[] ploidies) {
@@ -57,7 +57,7 @@ public final class HeterogeneousPloidyModelUnitTest {
             sampleNames.add("SAMPLE_" + i);
         final IndexedSampleList sampleList = new IndexedSampleList(sampleNames);
 
-        new HeterogeneousPloidyModel(sampleList, new int[]{1,2,3});//count mismatch
+        new PloidyList(sampleList, new int[]{1,2,3});//count mismatch
 
     }
 
@@ -69,7 +69,7 @@ public final class HeterogeneousPloidyModelUnitTest {
             sampleNames.add("SAMPLE_" + i);
         final IndexedSampleList sampleList = new IndexedSampleList(sampleNames);
 
-        new HeterogeneousPloidyModel(sampleList, new int[]{1,-2});//bad ploidy
+        new PloidyList(sampleList, new int[]{1,-2});//bad ploidy
 
     }
 
@@ -81,7 +81,7 @@ public final class HeterogeneousPloidyModelUnitTest {
             sampleNames.add("SAMPLE_" + i);
         final IndexedSampleList sampleList = new IndexedSampleList(sampleNames);
 
-        final PloidyModel model = new HeterogeneousPloidyModel(sampleList, new int[]{1, 2});
+        final PloidyList model = new PloidyList(sampleList, new int[]{1, 2});
         model.samplePloidy(-3);
     }
 

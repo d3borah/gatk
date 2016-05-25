@@ -34,13 +34,13 @@ public final class IndependentSampleGenotypesModel {
         final AlleleLikelihoodMatrixMapper<A> alleleLikelihoodMatrixMapper = AlleleLikelihoodMatrixMapper.newInstance(permutation);
 
         final int sampleCount = data.numberOfSamples();
-        final PloidyModel ploidyModel = data.ploidyModel();
+        final PloidyList ploidyList = data.ploidyModel();
         final List<GenotypeLikelihoods> genotypeLikelihoods = new ArrayList<>(sampleCount);
         final int alleleCount = genotypingAlleles.numberOfAlleles();
 
-        GenotypeLikelihoodCalculator likelihoodsCalculator = sampleCount > 0 ? getLikelihoodsCalculator(ploidyModel.samplePloidy(0), alleleCount) : null;
+        GenotypeLikelihoodCalculator likelihoodsCalculator = sampleCount > 0 ? getLikelihoodsCalculator(ploidyList.samplePloidy(0), alleleCount) : null;
         for (int i = 0; i < sampleCount; i++) {
-            final int samplePloidy = ploidyModel.samplePloidy(i);
+            final int samplePloidy = ploidyList.samplePloidy(i);
 
             // get a new likelihoodsCalculator if this sample's ploidy differs from the previous sample's
             if (samplePloidy != likelihoodsCalculator.ploidy()) {
@@ -50,7 +50,7 @@ public final class IndependentSampleGenotypesModel {
             final LikelihoodMatrix<A> sampleLikelihoods = alleleLikelihoodMatrixMapper.apply(data.readLikelihoods().sampleMatrix(i));
             genotypeLikelihoods.add(likelihoodsCalculator.genotypeLikelihoods(sampleLikelihoods));
         }
-        return new GenotypingLikelihoods<>(genotypingAlleles, ploidyModel, genotypeLikelihoods);
+        return new GenotypingLikelihoods<>(genotypingAlleles, ploidyList, genotypeLikelihoods);
     }
 
     private GenotypeLikelihoodCalculator getLikelihoodsCalculator(final int samplePloidy, final int alleleCount) {

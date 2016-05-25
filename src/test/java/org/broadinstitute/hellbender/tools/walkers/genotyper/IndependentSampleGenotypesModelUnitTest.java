@@ -22,8 +22,8 @@ public final class IndependentSampleGenotypesModelUnitTest {
         final ReadLikelihoods<Allele> likelihoods = ReadLikelihoodsUnitTester.readLikelihoods(alleleCount, readCounts);
         final AlleleList<Allele> genotypingAlleleList = discardAlleleCount == 0 ? likelihoods : discardAllelesAtRandom(likelihoods,discardAlleleCount);
         final SampleList sampleList = SampleListUnitTester.sampleList(ploidies.length);
-        final PloidyModel ploidyModel = new HeterogeneousPloidyModel(sampleList,ploidies);
-        final GenotypingData<Allele> data = new GenotypingData<>(ploidyModel,likelihoods);
+        final PloidyList ploidyList = new PloidyList(sampleList,ploidies);
+        final GenotypingData<Allele> data = new GenotypingData<>(ploidyList,likelihoods);
         final IndependentSampleGenotypesModel model = new IndependentSampleGenotypesModel();
         final GenotypingLikelihoods<Allele> gLikelihoods = model.calculateLikelihoods(genotypingAlleleList,data);
         Assert.assertNotNull(gLikelihoods);

@@ -1,7 +1,6 @@
 package org.broadinstitute.hellbender.tools.walkers.genotyper;
 
 import htsjdk.variant.variantcontext.Allele;
-import org.broadinstitute.hellbender.utils.genotyper.IndexedSampleList;
 import org.broadinstitute.hellbender.utils.genotyper.ReadLikelihoods;
 import org.broadinstitute.hellbender.utils.genotyper.ReadLikelihoodsUnitTester;
 import org.broadinstitute.hellbender.utils.genotyper.SampleList;
@@ -21,12 +20,12 @@ public final class GenotypingDataUnitTest {
     public void testInstantiation(final int[] ploidies, final int[] readCounts) {
         final ReadLikelihoods<Allele> likelihoods = ReadLikelihoodsUnitTester.readLikelihoods(2, readCounts);
         final SampleList sampleList = likelihoods;
-        final PloidyModel ploidyModel = new HeterogeneousPloidyModel(sampleList, ploidies);
-        final GenotypingData<Allele> data = new GenotypingData<>(ploidyModel, likelihoods);
+        final PloidyList ploidyList = new PloidyList(sampleList, ploidies);
+        final GenotypingData<Allele> data = new GenotypingData<>(ploidyList, likelihoods);
         Assert.assertEquals(data.asListOfAlleles(), likelihoods.asListOfAlleles());
         Assert.assertEquals(data.asListOfSamples(), likelihoods.asListOfSamples());
         Assert.assertEquals(data.readLikelihoods(), likelihoods);
-        Assert.assertEquals(data.ploidyModel(), ploidyModel);
+        Assert.assertEquals(data.ploidyModel(), ploidyList);
         for (int i = 0; i < data.numberOfSamples(); i++) {
             Assert.assertEquals(data.indexOfSample(data.getSample(i)), i);
         }

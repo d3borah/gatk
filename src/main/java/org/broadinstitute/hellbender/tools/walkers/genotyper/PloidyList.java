@@ -7,9 +7,6 @@ import org.broadinstitute.hellbender.utils.genotyper.SampleList;
 import java.util.Arrays;
 import java.util.Collections;
 
-/**
- * General heterogeneous ploidy model.
- */
 public final class PloidyList implements SampleList{
 
     private final SampleList sampleList;

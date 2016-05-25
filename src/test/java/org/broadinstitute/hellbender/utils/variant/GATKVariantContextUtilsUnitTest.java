@@ -4,6 +4,7 @@ import htsjdk.samtools.SAMSequenceDictionary;
 import htsjdk.variant.variantcontext.*;
 import htsjdk.variant.variantcontext.writer.Options;
 import htsjdk.variant.variantcontext.writer.VariantContextWriter;
+import htsjdk.variant.vcf.VCFConstants;
 import org.apache.commons.lang3.tuple.Pair;
 import org.broadinstitute.hellbender.utils.BaseUtils;
 import org.broadinstitute.hellbender.utils.GenomeLoc;
@@ -1629,5 +1630,75 @@ public final class GATKVariantContextUtilsUnitTest extends BaseTest {
         // should throw due to lack of reference
         final File outFile = createTempFile("testVCFWriter", ".vcf");
         final VariantContextWriter vcw = GATKVariantContextUtils.createVCFWriter(outFile, null, true, Options.INDEX_ON_THE_FLY);
+    }
+
+    @Test
+    public void testIncrementChromosomeCountsInfo() {
+        final Map<Allele, Integer> calledAltAlleles = new LinkedHashMap<>();
+        final Map<Allele, Integer> expectedCalledAltAlleles = new LinkedHashMap<>();
+        final List<Allele> alleles = new ArrayList<>(Arrays.asList(Aref, C));
+        for ( final Allele allele : alleles ) {
+            if ( allele.isNonReference() ) {
+                calledAltAlleles.put(allele, 0);
+                expectedCalledAltAlleles.put(allele, 1);
+            }
+        }
+        int calledAlleles = 0;
+        final Genotype genotype = new GenotypeBuilder().alleles(alleles).make();
+        calledAlleles = GATKVariantContextUtils.incrementChromosomeCountsInfo(calledAltAlleles, calledAlleles, genotype);
+        Assert.assertEquals(calledAlleles, alleles.size());
+        Assert.assertEquals(calledAltAlleles, expectedCalledAltAlleles);
+    }
+
+    @Test(expectedExceptions = IllegalArgumentException.class)
+    public void testIncrementChromosomeCountsInfoCalledAltAllelesException() {
+        int calledAlleles = 0;
+        final Genotype genotype = new GenotypeBuilder().make();
+        calledAlleles = GATKVariantContextUtils.incrementChromosomeCountsInfo(null, calledAlleles, genotype);
+    }
+
+    @Test(expectedExceptions = IllegalArgumentException.class)
+    public void testIncrementChromosomeCountsInfoGenotypeException() {
+        final Map<Allele, Integer> calledAltAlleles = new LinkedHashMap<>();
+        int calledAlleles = 0;
+        calledAlleles = GATKVariantContextUtils.incrementChromosomeCountsInfo(calledAltAlleles, calledAlleles, null);
+    }
+
+    @Test
+    public void testUpdateChromosomeCountsInfo() {
+        final Map<Allele, Integer> calledAltAlleles = new LinkedHashMap<>();
+        final Set<Double> alleleFrequency = new LinkedHashSet<Double>(calledAltAlleles.size());
+        final List<Allele> alleles = new ArrayList<>(Arrays.asList(Aref, C));
+        final int calledAlleles = alleles.size();
+        final List<Integer> numAltAlleles = new ArrayList<>();
+
+        final int alleleOccurence = 1;
+        for ( final Allele allele : alleles ) {
+            if ( allele.isNonReference() ) {
+                calledAltAlleles.put(allele, alleleOccurence);
+                alleleFrequency.add( ((double) alleleOccurence)/calledAlleles );
+                numAltAlleles.add(1);
+            }
+        }
+        final VariantContextBuilder builder = new VariantContextBuilder("test", "chr1", 1, Aref.length(), alleles);
+        GATKVariantContextUtils.updateChromosomeCountsInfo(calledAltAlleles, calledAlleles, builder);
+        final VariantContext vc = builder.make();
+        Assert.assertEquals(vc.getAttribute(VCFConstants.ALLELE_COUNT_KEY), numAltAlleles.toArray());
+        Assert.assertEquals(vc.getAttribute(VCFConstants.ALLELE_NUMBER_KEY), alleles.size());
+        Assert.assertEquals(vc.getAttribute(VCFConstants.ALLELE_FREQUENCY_KEY), alleleFrequency.toArray());
+    }
+
+    @Test(expectedExceptions = IllegalArgumentException.class)
+    public void testUpdateChromosomeCountsInfoCalledAltAllelesException() {
+        final int calledAlleles = 0;
+        final VariantContextBuilder builder = new VariantContextBuilder("test", "chr1", 1, Aref.length(), Arrays.asList(Aref, C));
+        GATKVariantContextUtils.updateChromosomeCountsInfo(null, calledAlleles, builder);
+    }
+
+    @Test(expectedExceptions = IllegalArgumentException.class)
+    public void testUpdateChromosomeCountsInfoBuilderException() {
+        final int calledAlleles = 0;
+        final Map<Allele, Integer> calledAltAlleles = new LinkedHashMap<>();
+        GATKVariantContextUtils.updateChromosomeCountsInfo(calledAltAlleles, calledAlleles, null);
     }
 }

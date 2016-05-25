@@ -710,4 +710,17 @@ public class SelectVariantsIntegrationTest extends CommandLineProgramTest {
         spec.executeTest("testMaxNoCall0_25--" + testFile, this);
     }
 
+    @Test
+    public void testSetFilteredGtoNocallUpdateInfo() throws IOException {
+        final String testFile = getToolTestDataDir() + "selectVariantsInfoField.vcf";
+
+        final IntegrationTestSpec spec = new IntegrationTestSpec(
+                baseTestString(" --setFilteredGtToNocall --removeUnusedAlternates --excludeNonVariants", testFile),
+                Collections.singletonList(getToolTestDataDir() + "expected/" + "testSelectVariants_SetFilteredGtoNocallUpdateInfo.vcf")
+        );
+
+        spec.executeTest("testSetFilteredGtoNocallUpdateInfo--" + testFile, this);
+
+    }
+
 }

@@ -1675,4 +1675,55 @@ public final class GATKVariantContextUtils {
 
         return -1;
     }
+
+    /**
+     * Increment the number of called alternate and reference plus alternate alleles for a genotype
+     *
+     * @param calledAltAlleles number of called alternate alleles for all genotypes
+     * @param calledAlleles    number of called alleles for all genotypes
+     * @param genotype         genotype
+     * @return incremented called alleles
+     * @throws IllegalArgumentException if calledAltAlleles or genotype are null
+     */
+    public static int incrementChromosomeCountsInfo(final Map<Allele, Integer> calledAltAlleles, final int calledAlleles, final Genotype genotype) {
+        if ( calledAltAlleles == null ) throw new IllegalArgumentException("Called alternate alleles can not be null");
+        if ( genotype == null ) throw new IllegalArgumentException("Genotype can not be null");
+
+        int incrementedCalledAlleles = calledAlleles;
+        if (genotype.isCalled()) {
+            for (final Allele allele : genotype.getAlleles()) {
+                incrementedCalledAlleles++;
+                if (allele.isNonReference()) {
+                    calledAltAlleles.put(allele, calledAltAlleles.get(allele) + 1);
+                }
+            }
+        }
+
+        return incrementedCalledAlleles;
+    }
+
+    /**
+     * Update the variant context chromosome counts info fields (AC, AN, AF)
+     *
+     * @param calledAltAlleles  number of called alternate alleles for all genotypes
+     * @param calledAlleles     number of called alleles for all genotypes
+     * @param builder           builder for variant context
+     * @throws IllegalArgumentException if calledAltAlleles or builder are null
+     */
+    public static void updateChromosomeCountsInfo(final Map<Allele, Integer> calledAltAlleles, final int calledAlleles,
+                                                  final VariantContextBuilder builder) {
+        if ( calledAltAlleles == null ) throw new IllegalArgumentException("Called alternate alleles can not be null");
+        if ( builder == null ) throw new IllegalArgumentException("Variant context builder can not be null");
+
+        builder.attribute(VCFConstants.ALLELE_COUNT_KEY, calledAltAlleles.values().toArray()).
+                attribute(VCFConstants.ALLELE_NUMBER_KEY, calledAlleles);
+        // Add AF is there are called alleles
+        if ( calledAlleles != 0 ) {
+            final Set<Double> alleleFrequency = new LinkedHashSet<Double>(calledAltAlleles.size());
+            for ( final Integer value : calledAltAlleles.values() ) {
+                alleleFrequency.add(value.doubleValue()/calledAlleles);
+            }
+            builder.attribute(VCFConstants.ALLELE_FREQUENCY_KEY, alleleFrequency.toArray());
+        }
+    }
 }

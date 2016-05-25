@@ -15,6 +15,7 @@ import org.broadinstitute.hellbender.cmdline.programgroups.VariantProgramGroup;
 import org.broadinstitute.hellbender.engine.*;
 import org.broadinstitute.hellbender.exceptions.UserException;
 import org.broadinstitute.hellbender.utils.IntervalUtils;
+import org.broadinstitute.hellbender.utils.variant.GATKVariantContextUtils;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -177,6 +178,9 @@ public final class VariantFiltration extends VariantWalker {
 
     private final List<Allele> diploidNoCallAlleles = Arrays.asList(Allele.NO_CALL, Allele.NO_CALL);
 
+    // Number of called alleles
+    int calledAlleles = 0;
+
     /**
      * Invert logic if specified
      *
@@ -205,6 +209,13 @@ public final class VariantFiltration extends VariantWalker {
         // setup the header fields
         final Set<VCFHeaderLine> hInfo = new LinkedHashSet<>();
         hInfo.addAll(getHeaderForVariants().getMetaDataInInputOrder());
+
+        // need AC, AN and AF since output if set filtered genotypes to no-call
+        if ( setFilteredGenotypesToNocall ) {
+            hInfo.add(VCFStandardHeaderLines.getInfoLine(VCFConstants.ALLELE_COUNT_KEY));
+            hInfo.add(VCFStandardHeaderLines.getInfoLine(VCFConstants.ALLELE_NUMBER_KEY));
+            hInfo.add(VCFStandardHeaderLines.getInfoLine(VCFConstants.ALLELE_FREQUENCY_KEY));
+        }
 
         if ( clusterWindow > 0 ) {
             hInfo.add(new VCFFilterHeaderLine(CLUSTERED_SNP_FILTER_NAME, "SNPs found in clusters"));
@@ -287,10 +298,11 @@ public final class VariantFiltration extends VariantWalker {
 
     private void filter(final VariantContext vc, final FeatureContext featureContext) {
         final VariantContextBuilder builder = new VariantContextBuilder(vc);
+        calledAlleles= 0;
 
         // make new Genotypes based on filters
         if ( !genotypeFilterExps.isEmpty() || setFilteredGenotypesToNocall ) {
-            builder.genotypes(makeGenotypes(vc));
+            builder.genotypes(makeGenotypes(vc, builder ));
         }
 
         // make a new variant context based on filters
@@ -323,8 +335,19 @@ public final class VariantFiltration extends VariantWalker {
         writer.add(builder.make());
     }
 
-    private GenotypesContext makeGenotypes(final VariantContext vc) {
+    private GenotypesContext makeGenotypes(final VariantContext vc, final VariantContextBuilder builder ) {
         final GenotypesContext genotypes = GenotypesContext.create(vc.getGenotypes().size());
+
+        //
+        // recompute AC, AN and AF if filtered genotypes are set to no-call
+        //
+        // occurrences of alternate alleles over all genotypes
+        final Map<Allele, Integer> calledAltAlleles = new LinkedHashMap<Allele, Integer>(vc.getNAlleles()-1);
+        for ( final Allele altAllele : vc.getAlternateAlleles() ) {
+            calledAltAlleles.put(altAllele, 0);
+        }
+
+        boolean haveFilteredNoCallAlleles = false;
 
         // for each genotype, check filters then create a new object
         for ( final Genotype g : vc.getGenotypes() ) {
@@ -343,14 +366,19 @@ public final class VariantFiltration extends VariantWalker {
 
                 // if sample is filtered and --setFilteredGtToNocall, set genotype to non-call
                 if ( !filters.isEmpty() && setFilteredGenotypesToNocall ) {
+                    haveFilteredNoCallAlleles = true;
                     genotypes.add(new GenotypeBuilder(g).filters(filters).alleles(diploidNoCallAlleles).make());
                 } else {
                     genotypes.add(new GenotypeBuilder(g).filters(filters).make());
+                    calledAlleles = GATKVariantContextUtils.incrementChromosomeCountsInfo(calledAltAlleles, calledAlleles, g);
                 }
             } else {
                 genotypes.add(g);
             }
         }
+        if ( haveFilteredNoCallAlleles )
+            GATKVariantContextUtils.updateChromosomeCountsInfo(calledAltAlleles, calledAlleles, builder);
+
         return genotypes;
     }
 

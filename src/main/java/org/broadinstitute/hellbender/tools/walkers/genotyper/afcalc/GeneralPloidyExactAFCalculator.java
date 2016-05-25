@@ -41,7 +41,7 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
      */
     private static final class CombinedPoolLikelihoods {
         private final List<ExactACset> alleleCountSetList;
-        private final Map<ExactACcounts,ExactACset> conformationMap;
+        private final Map<int[],ExactACset> conformationMap;
         private double maxLikelihood;
 
         CombinedPoolLikelihoods() {
@@ -62,11 +62,11 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
         }
 
         public boolean hasConformation(final int[] ac) {
-            return conformationMap.containsKey(new ExactACcounts(ac));
+            return conformationMap.containsKey(ac);
         }
 
         public double getLikelihoodOfConformation(final int[] ac) {
-            return conformationMap.get(new ExactACcounts(ac)).getLog10Likelihoods()[0];
+            return conformationMap.get(ac).getLog10Likelihoods()[0];
         }
 
         public double getGLOfACZero() {
@@ -127,7 +127,7 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
         // first element: zero ploidy, e.g. trivial degenerate distribution
         final int numAltAlleles = numAlleles - 1;
         final int[] zeroCounts = new int[numAlleles];
-        final ExactACset set = new ExactACset(1, new ExactACcounts(zeroCounts));
+        final ExactACset set = new ExactACset(1, zeroCounts);
         set.getLog10Likelihoods()[0] = 0.0;
         final StateTracker stateTracker = getStateTracker(false,numAltAlleles);
         int combinedPloidy = 0;
@@ -165,7 +165,7 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
                                                                final StateTracker stateTracker) {
         final Deque<ExactACset> ACqueue = new LinkedList<>();
         // mapping of ExactACset indexes to the objects
-        final Map<ExactACcounts, ExactACset> indexesToACset = new LinkedHashMap<>();
+        final Map<int[], ExactACset> indexesToACset = new LinkedHashMap<>();
         final CombinedPoolLikelihoods newPool = new CombinedPoolLikelihoods();
 
         // add AC=0 to the queue
@@ -173,7 +173,7 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
         final int newPloidy = originalPloidy + newGLPloidy;
         zeroCounts[0] = newPloidy;
 
-        final ExactACset zeroSet = new ExactACset(1, new ExactACcounts(zeroCounts));
+        final ExactACset zeroSet = new ExactACset(1, zeroCounts);
 
         ACqueue.add(zeroSet);
         indexesToACset.put(zeroSet.getACcounts(), zeroSet);
@@ -216,11 +216,11 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
                                                          final int originalPloidy,
                                                          final int newGLPloidy,
                                                          final Deque<ExactACset> ACqueue,
-                                                         final Map<ExactACcounts, ExactACset> indexesToACset,
+                                                         final Map<int[], ExactACset> indexesToACset,
                                                          final StateTracker stateTracker) {
 
         // compute likelihood in "set" of new set based on original likelihoods
-        final int numAlleles = set.getACcounts().getCounts().length;
+        final int numAlleles = set.getACcounts().length;
         final int newPloidy = set.getACsum();
         final double log10LofK = computeLofK(set, originalPool, newGL, log10AlleleFrequencyPriors, numAlleles, originalPloidy, newGLPloidy, stateTracker);
 
@@ -237,7 +237,7 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
         // iterate over higher frequencies if possible
         // by convention, ACcounts contained in set have full vector of possible pool ac counts including ref count.
         // so, if first element is zero, it automatically means we have no wiggle since we're in a corner of the conformation space
-        final int ACwiggle = set.getACcounts().getCounts()[0];
+        final int ACwiggle = set.getACcounts()[0];
         if ( ACwiggle == 0 ) // all alternate alleles already sum to 2N so we cannot possibly go to higher frequencies
         {
             return log10LofK;
@@ -246,7 +246,7 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
 
         // add conformations for other cases
         for ( int allele = 1; allele < numAlleles; allele++ ) {
-            final int[] ACcountsClone = set.getACcounts().getCounts().clone();
+            final int[] ACcountsClone = set.getACcounts().clone();
             ACcountsClone[allele]++;
             // is this a valid conformation?
             final int altSum = (int)MathUtils.sum(ACcountsClone) - ACcountsClone[0];
@@ -287,7 +287,7 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
             throw new GATKException("BUG: inconsistent sizes of set.getACsum and passed ploidy values");
         }
 
-        totalAltK -= set.getACcounts().getCounts()[0];
+        totalAltK -= set.getACcounts()[0];
         // totalAltK has sum of alt alleles of conformation now
 
 
@@ -305,7 +305,7 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
             // ExactACset holds by convention the conformation of all alleles, and the sum of all allele count is just the ploidy.
             // To compute n!/k1!k2!k3!... we need to compute first n!/(k2!k3!...) and then further divide by k1! where k1=ploidy-sum_k_i
 
-            final int[] currentCount = set.getACcounts().getCounts();
+            final int[] currentCount = set.getACcounts();
             final double denom =  -MathUtils.log10MultinomialCoefficient(newPloidy, currentCount);
 
             // for current conformation, get all possible ways to break vector K into two components G1 and G2
@@ -338,7 +338,7 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
         double log10LofK = set.getLog10Likelihoods()[0];
 
         // update the MLE if necessary
-        final int altCounts[] = Arrays.copyOfRange(set.getACcounts().getCounts(), 1, set.getACcounts().getCounts().length);
+        final int altCounts[] = Arrays.copyOfRange(set.getACcounts(), 1, set.getACcounts().length);
         // TODO -- GUILLERMO THIS CODE MAY PRODUCE POSITIVE LIKELIHOODS OR -INFINITY
         stateTracker.updateMLEifNeeded(Math.max(log10LofK, -Double.MAX_VALUE), altCounts);
 
@@ -748,12 +748,10 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
 
     private static void updateACset(final int[] newSetCounts,
                                    final Deque<ExactACset> ACqueue,
-                                   final Map<ExactACcounts, ExactACset> indexesToACset) {
-
-        final ExactACcounts index = new ExactACcounts(newSetCounts);
-        if ( !indexesToACset.containsKey(index) ) {
-            final ExactACset newSet = new ExactACset(1, index);
-            indexesToACset.put(index, newSet);
+                                   final Map<int[], ExactACset> indexesToACset) {
+        if ( !indexesToACset.containsKey(newSetCounts) ) {
+            final ExactACset newSet = new ExactACset(1, newSetCounts.clone());
+            indexesToACset.put(newSetCounts.clone(), newSet);
             ACqueue.add(newSet);
         }
 

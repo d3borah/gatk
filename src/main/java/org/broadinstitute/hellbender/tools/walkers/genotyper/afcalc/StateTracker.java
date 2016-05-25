@@ -98,13 +98,11 @@ final class StateTracker {
     /**
      * @return true iff all ACs in this object are less than or equal to their corresponding ACs in the provided set
      */
-    private boolean isLowerAC(final ExactACcounts otherACs, final boolean otherACsContainsReference) {
-        final int[] otherACcounts = otherACs.getCounts();
-
+    private boolean isLowerAC(final int[] otherACs, final boolean otherACsContainsReference) {
         final int firstAltAlleleIndex = otherACsContainsReference ? 1 : 0;
 
-        for ( int i = firstAltAlleleIndex; i < otherACcounts.length; i++ ) {
-            if ( alleleCountsOfMLE[i - firstAltAlleleIndex] > otherACcounts[i] ) {
+        for ( int i = firstAltAlleleIndex; i < otherACs.length; i++ ) {
+            if ( alleleCountsOfMLE[i - firstAltAlleleIndex] > otherACs[i] ) {
                 return false;
             }
         }
@@ -121,7 +119,7 @@ final class StateTracker {
      * @return return true if there's no reason to continue with subpaths of AC, or false otherwise
      */
     @VisibleForTesting
-    boolean abort(final double log10LofK, final ExactACcounts ACs, final boolean enforceLowerACs, final boolean exactACcountsContainReference) {
+    boolean abort(final double log10LofK, final int[] ACs, final boolean enforceLowerACs, final boolean exactACcountsContainReference) {
         return tooLowLikelihood(log10LofK) && (!enforceLowerACs || isLowerAC(ACs,exactACcountsContainReference));
     }
 

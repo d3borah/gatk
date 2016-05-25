@@ -10,19 +10,19 @@ import java.util.Arrays;
  */
 public final class ExactACset {
     // the counts of the various alternate alleles which this column represents
-    private final ExactACcounts acCounts;
+    private final int[] acCounts;
 
     // the column of the matrix
     private final double[] log10Likelihoods;
 
     private final long sum;
 
-    public ExactACset(final int size, final ExactACcounts acCounts) {
+    public ExactACset(final int size, final int[] acCounts) {
         Utils.nonNull(acCounts);
         this.acCounts = acCounts;
         log10Likelihoods = new double[size];
         Arrays.fill(log10Likelihoods, Double.NEGATIVE_INFINITY);
-        sum = MathUtils.sum(acCounts.getCounts());
+        sum = MathUtils.sum(acCounts);
     }
 
     /**
@@ -42,7 +42,7 @@ public final class ExactACset {
         return acCounts.hashCode();
     }
 
-    public ExactACcounts getACcounts() {
+    public int[] getACcounts() {
         return acCounts;
     }
 

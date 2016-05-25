@@ -34,7 +34,7 @@ public final class IndependentSampleGenotypesModel {
         final AlleleLikelihoodMatrixMapper<A> alleleLikelihoodMatrixMapper = AlleleLikelihoodMatrixMapper.newInstance(permutation);
 
         final int sampleCount = data.numberOfSamples();
-        final PloidyList ploidyList = data.ploidyModel();
+        final PloidyList ploidyList = data.ploidyList();
         final List<GenotypeLikelihoods> genotypeLikelihoods = new ArrayList<>(sampleCount);
         final int alleleCount = genotypingAlleles.numberOfAlleles();
 

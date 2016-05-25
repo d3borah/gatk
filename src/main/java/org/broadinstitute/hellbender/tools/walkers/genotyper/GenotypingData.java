@@ -27,10 +27,8 @@ public final class GenotypingData<A extends Allele> implements SampleList, Allel
      *   or they are not compatible in terms of the samples they contain; their lists must match.
      */
     public GenotypingData(final PloidyList ploidyList, final ReadLikelihoods<A> likelihoods) {
-        Utils.nonNull(ploidyList, "the ploidy model cannot be null");
-        Utils.nonNull(likelihoods, "the likelihood object cannot be null");
-        this.ploidyList = ploidyList;
-        this.likelihoods = likelihoods;
+        this.ploidyList = Utils.nonNull(ploidyList, "the ploidy model cannot be null");
+        this.likelihoods = Utils.nonNull(likelihoods, "the likelihood object cannot be null");
         if (!ploidyList.asListOfSamples().equals(likelihoods.asListOfSamples())) {
             throw new IllegalArgumentException("sample list are different between ploidy-model and read-likelihood collection, perhaps just the order");
         }
@@ -40,7 +38,7 @@ public final class GenotypingData<A extends Allele> implements SampleList, Allel
      * Returns the ploidy model that corresponds to the data provided.
      * @return never {@code null}.
      */
-    public PloidyList ploidyModel() {
+    public PloidyList ploidyList() {
         return ploidyList;
     }
 

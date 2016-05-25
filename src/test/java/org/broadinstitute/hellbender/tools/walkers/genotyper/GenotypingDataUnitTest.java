@@ -25,7 +25,7 @@ public final class GenotypingDataUnitTest {
         Assert.assertEquals(data.asListOfAlleles(), likelihoods.asListOfAlleles());
         Assert.assertEquals(data.asListOfSamples(), likelihoods.asListOfSamples());
         Assert.assertEquals(data.readLikelihoods(), likelihoods);
-        Assert.assertEquals(data.ploidyModel(), ploidyList);
+        Assert.assertEquals(data.ploidyList(), ploidyList);
         for (int i = 0; i < data.numberOfSamples(); i++) {
             Assert.assertEquals(data.indexOfSample(data.getSample(i)), i);
         }

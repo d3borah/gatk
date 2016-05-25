@@ -30,7 +30,7 @@ import java.util.stream.Stream;
  */
 public abstract class GenotypingEngine<Config extends StandardCallerArgumentCollection> {
 
-    protected final AFCalculatorProvider afCalculatorProvider   ;
+    protected final AFCalculatorProvider afCalculatorProvider;
 
     protected final Config configuration;
 
@@ -38,13 +38,7 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
 
     protected Logger logger;
 
-    protected final int numberOfGenomes;
-
     protected final SampleList samples;
-
-    private final AFPriorProvider log10AlleleFrequencyPriorsSNPs;
-
-    private final AFPriorProvider log10AlleleFrequencyPriorsIndels;
 
     /**
      * Construct a new genotyper engine, on a specific subset of samples.
@@ -62,9 +56,6 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
         this.samples = Utils.nonNull(samples, "the sample list cannot be null");
         this.afCalculatorProvider = Utils.nonNull(afCalculatorProvider, "the AF calculator provider cannot be null");
         logger = LogManager.getLogger(getClass());
-        numberOfGenomes = this.samples.numberOfSamples() * configuration.genotypeArgs.samplePloidy;
-        log10AlleleFrequencyPriorsSNPs = composeAlleleFrequencyPriorProvider(numberOfGenomes, configuration.genotypeArgs.snpHeterozygosity);
-        log10AlleleFrequencyPriorsIndels = composeAlleleFrequencyPriorProvider(numberOfGenomes, configuration.genotypeArgs.indelHeterozygosity);
     }
 
     /**
@@ -108,20 +99,6 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
         }
         // null frequency for AF=0 is (1 - sum(all other frequencies))
         priors[0] = Math.log10(1.0 - sum);
-    }
-
-    /**
-     * Function that fills vector with allele frequency priors. By default, infinite-sites, neutral variation prior is used,
-     * where Pr(AC=i) = theta/i where theta is heterozygosity
-     * @param N                                Number of chromosomes
-     * @param heterozygosity                   default heterozygosity to use
-     *
-     * @throws IllegalArgumentException if {@code inputPriors} has size != {@code N} or any entry in {@code inputPriors} is not in the (0,1) range.
-     *
-     * @return never {@code null}.
-     */
-    public static AFPriorProvider composeAlleleFrequencyPriorProvider(final int N, final double heterozygosity) {
-        return new AFPriorProvider(heterozygosity);
     }
 
     /**
@@ -489,16 +466,7 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
      */
     protected final double[] getAlleleFrequencyPriors( final VariantContext vc, final int defaultPloidy, final GenotypeLikelihoodsCalculationModel model ) {
         final int totalPloidy = GATKVariantContextUtils.totalPloidy(vc, defaultPloidy);
-        switch (model) {
-            case SNP:
-            case GENERALPLOIDYSNP:
-                return log10AlleleFrequencyPriorsSNPs.forTotalPloidy(totalPloidy);
-            case INDEL:
-            case GENERALPLOIDYINDEL:
-                return log10AlleleFrequencyPriorsIndels.forTotalPloidy(totalPloidy);
-            default:
-                throw new IllegalArgumentException("Unexpected GenotypeCalculationModel " + model);
-        }
+        return AFPriorProvider.forTotalPloidy(totalPloidy);
     }
 
     /**
@@ -590,7 +558,7 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
         } else if (log10GenotypeLikelihoods.length != this.configuration.genotypeArgs.samplePloidy + 1) {
             throw new IllegalArgumentException("wrong likelihoods dimensions");
         } else {
-            final double[] log10Priors = log10AlleleFrequencyPriorsSNPs.forTotalPloidy(this.configuration.genotypeArgs.samplePloidy);
+            final double[] log10Priors = AFPriorProvider.forTotalPloidy(this.configuration.genotypeArgs.samplePloidy);
             final double log10ACeq0Likelihood = log10GenotypeLikelihoods[0];
             final double log10ACeq0Prior = log10Priors[0];
             final double log10ACeq0Posterior = log10ACeq0Likelihood + log10ACeq0Prior;

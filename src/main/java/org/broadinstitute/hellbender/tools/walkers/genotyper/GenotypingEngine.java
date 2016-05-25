@@ -8,11 +8,10 @@ import org.apache.logging.log4j.Logger;
 import org.broadinstitute.hellbender.engine.AlignmentContext;
 import org.broadinstitute.hellbender.engine.FeatureContext;
 import org.broadinstitute.hellbender.engine.ReferenceContext;
-import org.broadinstitute.hellbender.exceptions.UserException;
 import org.broadinstitute.hellbender.tools.walkers.annotator.VariantAnnotatorEngine;
 import org.broadinstitute.hellbender.tools.walkers.genotyper.afcalc.AFCalculationResult;
 import org.broadinstitute.hellbender.tools.walkers.genotyper.afcalc.AFCalculator;
-import org.broadinstitute.hellbender.tools.walkers.genotyper.afcalc.AFCalculatorProvider;
+import org.broadinstitute.hellbender.tools.walkers.genotyper.afcalc.GeneralPloidyExactAFCalculator;
 import org.broadinstitute.hellbender.utils.*;
 import org.broadinstitute.hellbender.utils.genotyper.PerReadAlleleLikelihoodMap;
 import org.broadinstitute.hellbender.utils.genotyper.SampleList;
@@ -29,8 +28,6 @@ import java.util.stream.Stream;
  * Base class for genotyper engines.
  */
 public abstract class GenotypingEngine<Config extends StandardCallerArgumentCollection> {
-
-    protected final AFCalculatorProvider afCalculatorProvider;
 
     protected final Config configuration;
 
@@ -49,56 +46,10 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
      *
      * @throws IllegalArgumentException if any of {@code samples}, {@code configuration} is {@code null}.
      */
-    protected GenotypingEngine(final Config configuration,
-                               final SampleList samples,
-                               final AFCalculatorProvider afCalculatorProvider) {
+    protected GenotypingEngine(final Config configuration, final SampleList samples) {
         this.configuration = Utils.nonNull(configuration, "the configuration cannot be null");
         this.samples = Utils.nonNull(samples, "the sample list cannot be null");
-        this.afCalculatorProvider = Utils.nonNull(afCalculatorProvider, "the AF calculator provider cannot be null");
         logger = LogManager.getLogger(getClass());
-    }
-
-    /**
-     * Function that fills vector with allele frequency priors. By default, infinite-sites, neutral variation prior is used,
-     * where Pr(AC=i) = theta/i where theta is heterozygosity
-     * @param N                                Number of chromosomes
-     * @param priors                           (output) array to be filled with priors
-     * @param heterozygosity                   default heterozygosity to use, if inputPriors is empty
-     * @param inputPriors                      Input priors to use (in which case heterozygosity is ignored)
-     */
-    public static void computeAlleleFrequencyPriors(final int N, final double[] priors, final double heterozygosity, final List<Double> inputPriors) {
-        double sum = 0.0;
-
-        if (!inputPriors.isEmpty()) {
-            // user-specified priors
-            if (inputPriors.size() != N) {
-                throw new UserException.BadArgumentValue("inputPrior", "Invalid length of inputPrior vector: vector length must be equal to # samples +1 ");
-            }
-
-            int idx = 1;
-            for (final double prior: inputPriors) {
-                if (prior < 0.0) {
-                    throw new UserException.BadArgumentValue("Bad argument: negative values not allowed", "inputPrior");
-                }
-                priors[idx++] = Math.log10(prior);
-                sum += prior;
-            }
-        }
-        else {
-            // for each i
-            for (int i = 1; i <= N; i++) {
-                final double value = heterozygosity / (double)i;
-                priors[i] = Math.log10(value);
-                sum += value;
-            }
-        }
-
-        // protection against the case of heterozygosity too high or an excessive number of samples (which break population genetics assumptions)
-        if (sum > 1.0) {
-            throw new UserException.BadArgumentValue("heterozygosity","The heterozygosity value is set too high relative to the number of samples to be processed, or invalid values specified if input priors were provided - try reducing heterozygosity value or correct input priors.");
-        }
-        // null frequency for AF=0 is (1 - sum(all other frequencies))
-        priors[0] = Math.log10(1.0 - sum);
     }
 
     /**
@@ -188,7 +139,7 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
 
         final int defaultPloidy = configuration.genotypeArgs.samplePloidy;
         final int maxAltAlleles = configuration.genotypeArgs.MAX_ALTERNATE_ALLELES;
-        final AFCalculator afCalculator = afCalculatorProvider.getInstance(vc,defaultPloidy,maxAltAlleles);
+        final AFCalculator afCalculator = new GeneralPloidyExactAFCalculator();
         final AFCalculationResult AFresult = afCalculator.getLog10PNonRef(vc, defaultPloidy,maxAltAlleles, getAlleleFrequencyPriors(vc,defaultPloidy,model));
 
         final OutputAlleleSubset outputAlternativeAlleles = calculateOutputAlleleSubset(AFresult);

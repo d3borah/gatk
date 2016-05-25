@@ -56,30 +56,6 @@ abstract class ExactAFCalculator extends AFCalculator {
         }
     }
 
-    /**
-     * Unpack GenotypesContext into arraylist of doubel values
-     * @param GLs            Input genotype context
-     * @return               ArrayList of doubles corresponding to GL vectors
-     */
-    protected static List<double[]> getGLs(final GenotypesContext GLs, final boolean includeDummy) {
-        final List<double[]> genotypeLikelihoods = new ArrayList<>(GLs.size() + 1);
-
-        if ( includeDummy ) {
-            genotypeLikelihoods.add(new double[]{0.0, 0.0, 0.0}); // dummy
-        }
-        for ( final Genotype sample : GLs.iterateInSampleNameOrder() ) {
-            if ( sample.hasLikelihoods() ) {
-                final double[] gls = sample.getLikelihoods().getAsVector();
-
-                if ( MathUtils.sum(gls) < GATKVariantContextUtils.SUM_GL_THRESH_NOCALL ) {
-                    genotypeLikelihoods.add(gls);
-                }
-            }
-        }
-
-        return genotypeLikelihoods;
-    }
-
     @Override
     protected VariantContext reduceScope(final VariantContext vc, final int defaultPloidy, final int maximumAlternativeAlleles) {
         Utils.nonNull(vc, "vc is null");

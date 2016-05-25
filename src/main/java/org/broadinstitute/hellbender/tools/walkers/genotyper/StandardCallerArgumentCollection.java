@@ -4,13 +4,9 @@ import htsjdk.variant.variantcontext.VariantContext;
 import org.apache.commons.collections4.map.DefaultedMap;
 import org.broadinstitute.hellbender.cmdline.*;
 import org.broadinstitute.hellbender.engine.FeatureInput;
-import org.broadinstitute.hellbender.tools.walkers.genotyper.afcalc.AFCalculatorImplementation;
 import org.broadinstitute.hellbender.utils.Utils;
 
 import java.io.File;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.Collections;
 import java.util.Map;
 
@@ -36,7 +32,6 @@ public class StandardCallerArgumentCollection implements ArgumentCollectionDefin
         if ( other.sampleContamination != null ) {
             setSampleContamination(other.sampleContamination);
         }
-        this.requestedAlleleFrequencyCalculationModel = other.requestedAlleleFrequencyCalculationModel;
         this.exactCallsLog = other.exactCallsLog != null ? new File(other.exactCallsLog.getAbsolutePath()) : null;
         this.outputMode = other.outputMode;
         this.annotateAllSitesWithPLs = other.annotateAllSitesWithPLs;
@@ -104,12 +99,6 @@ public class StandardCallerArgumentCollection implements ArgumentCollectionDefin
         this.sampleContamination.putAll(sampleContamination);                   //make a copy to be safe
     }
 
-    /**
-     * Controls the model used to calculate the probability that a site is variant plus the various sample genotypes in the data at a given locus.
-     */
-    @Hidden
-    @Argument(fullName = "p_nonref_model", shortName = "pnrm", doc = "Non-reference probability calculation model to employ", optional = true)
-    public AFCalculatorImplementation requestedAlleleFrequencyCalculationModel;
 
     @Hidden
     @Argument(shortName = "logExactCalls", doc="x", optional=true)

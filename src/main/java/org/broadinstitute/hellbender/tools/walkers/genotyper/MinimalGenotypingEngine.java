@@ -11,7 +11,6 @@ import org.broadinstitute.hellbender.utils.genotyper.SampleList;
  * any other purpose!
  */
 public final class MinimalGenotypingEngine extends GenotypingEngine<UnifiedArgumentCollection> {
-
     /**
      * Creates a new unified genotyping given the UG configuration parameters and the targeted set of samples
      *

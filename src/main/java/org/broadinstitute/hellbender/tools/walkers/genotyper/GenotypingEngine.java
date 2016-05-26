@@ -11,7 +11,7 @@ import org.broadinstitute.hellbender.engine.ReferenceContext;
 import org.broadinstitute.hellbender.tools.walkers.annotator.VariantAnnotatorEngine;
 import org.broadinstitute.hellbender.tools.walkers.genotyper.afcalc.AFCalculationResult;
 import org.broadinstitute.hellbender.tools.walkers.genotyper.afcalc.AFCalculator;
-import org.broadinstitute.hellbender.tools.walkers.genotyper.afcalc.GeneralPloidyExactAFCalculator;
+import org.broadinstitute.hellbender.tools.walkers.genotyper.afcalc.FlatPriorAFCalculator;
 import org.broadinstitute.hellbender.utils.*;
 import org.broadinstitute.hellbender.utils.genotyper.PerReadAlleleLikelihoodMap;
 import org.broadinstitute.hellbender.utils.genotyper.SampleList;
@@ -135,7 +135,7 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
 
         final int defaultPloidy = configuration.genotypeArgs.samplePloidy;
         final int maxAltAlleles = configuration.genotypeArgs.MAX_ALTERNATE_ALLELES;
-        final AFCalculator afCalculator = new GeneralPloidyExactAFCalculator();
+        final AFCalculator afCalculator = new FlatPriorAFCalculator();
         final AFCalculationResult AFresult = afCalculator.getLog10PNonRef(vc, defaultPloidy,maxAltAlleles, getAlleleFrequencyPriors(vc,defaultPloidy));
 
         final OutputAlleleSubset outputAlternativeAlleles = calculateOutputAlleleSubset(AFresult);

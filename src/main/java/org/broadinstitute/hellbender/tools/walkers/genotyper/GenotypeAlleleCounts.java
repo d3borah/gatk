@@ -500,7 +500,6 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
 
 
     private void copyAlleleCountsByIndex(final int[] dest, final int offset, final int minimumAlleleIndex, final int maximumAlleleIndex) {
-
         // First we determine what section of the sortedAlleleCounts array contains the counts of interest,
         // By the present allele rank range of interest.
         final int minimumAlleleRank = alleleRankFor(minimumAlleleIndex);
@@ -622,17 +621,13 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
     public <T extends Allele> List<T> asAlleleList(final List<T> allelesToUse) {
         Utils.nonNull(allelesToUse, "the input allele list cannot be null");
         Utils.validateArg(allelesToUse.size() >= maximumAlleleIndex(), "the provided alleles to use does not contain an element for the maximum allele");
-        if (distinctAlleleCount == 1 ) {
-            return Collections.nCopies(ploidy, allelesToUse.get(sortedAlleleCounts[0]));
-        } else {
-            final List<T> result = new ArrayList<>(ploidy);
-            for (int i = 0, ii = 0; i < distinctAlleleCount; i++) {
-                final T allele = allelesToUse.get(sortedAlleleCounts[ii++]);
-                final int repeats = sortedAlleleCounts[ii++];
-                result.addAll(Collections.nCopies(repeats, allele));
-            }
-            return result;
-        }
-    }
 
+        final List<T> result = new ArrayList<>(ploidy);
+        for (int i = 0; i < distinctAlleleCount; i++) {
+            final T allele = allelesToUse.get(sortedAlleleCounts[2*i]);
+            final int repeats = sortedAlleleCounts[2*i+1];
+            result.addAll(Collections.nCopies(repeats, allele));
+        }
+        return result;
+    }
 }

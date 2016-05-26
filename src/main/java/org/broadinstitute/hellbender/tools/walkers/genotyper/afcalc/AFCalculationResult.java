@@ -18,10 +18,7 @@ import java.util.*;
 public final class AFCalculationResult {
     private static final int AF0 = 0;
     private static final int AF1p = 1;
-    private static final int LOG_10_ARRAY_SIZES = 2;
 
-    private final double[] log10LikelihoodsOfAC;
-    private final double[] log10PriorsOfAC;
     private final double[] log10PosteriorsOfAC;
 
     private final Map<Allele, Double> log10pRefByAllele;
@@ -46,8 +43,6 @@ public final class AFCalculationResult {
                                final Map<Allele, Double> log10pRefByAllele) {
         this.alleleCountsOfMLE = Utils.nonNull(alleleCountsOfMLE, "alleleCountsOfMLE cannot be null").clone();
         this.allelesUsedInGenotyping = Collections.unmodifiableList(new ArrayList<>(allelesUsedInGenotyping));
-        this.log10LikelihoodsOfAC = Arrays.copyOf(log10LikelihoodsOfAC, LOG_10_ARRAY_SIZES);
-        this.log10PriorsOfAC = Arrays.copyOf(log10PriorsOfAC, LOG_10_ARRAY_SIZES);
         this.log10PosteriorsOfAC = computePosteriors(log10LikelihoodsOfAC, log10PriorsOfAC);
         this.log10pRefByAllele = Collections.unmodifiableMap(new LinkedHashMap<>(log10pRefByAllele));
     }

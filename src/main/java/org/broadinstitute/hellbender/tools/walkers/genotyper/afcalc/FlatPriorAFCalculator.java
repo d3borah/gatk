@@ -292,21 +292,12 @@ public class FlatPriorAFCalculator extends AFCalculator {
 
         // First fill boolean array stating whether each original allele is present in new mapping
         final List<Boolean> allelePresent = originalAlleles.stream().map(a -> allelesToSubset.contains(a)).collect(Collectors.toList());
-        
+
         // compute mapping from old idx to new idx
-        // This might be needed in case new allele set is not ordered in the same way as old set
         // Example. Original alleles: {T*,C,G,A}. New alleles: {G,C}. Permutation key = [2,1]
-
-        final int[] permutationKey = new int[allelesToSubset.size()];
-        for (int k=0; k < allelesToSubset.size(); k++)
-        // for each allele to subset, find corresponding index in original allele list
-        {
-            permutationKey[k] = originalAlleles.indexOf(allelesToSubset.get(k));
-        }
-
+        final int[] oldIndicesOfNewAlleles = allelesToSubset.stream().mapToInt(a -> originalAlleles.indexOf(a)).toArray();
 
         final SumIterator iterator = new SumIterator(originalAlleles.size(),numChromosomes);
-
         while (iterator.hasNext()) {
             // for each entry in logPL table, associated originally with allele count stored in vec[],
             // see if this allele count conformation will be present in new logPL table.
@@ -326,9 +317,9 @@ public class FlatPriorAFCalculator extends AFCalculator {
                 final int[] newCount = new int[allelesToSubset.size()];
 
                 // map from old allele mapping count to new allele mapping
-                // In pseudo-Matlab notation: newCount = vec[permutationKey] for permutationKey vector
+                // In pseudo-Matlab notation: newCount = vec[oldIndicesOfNewAlleles] for oldIndicesOfNewAlleles vector
                 for (int idx = 0; idx < newCount.length; idx++) {
-                    newCount[idx] = pVec[permutationKey[idx]];
+                    newCount[idx] = pVec[oldIndicesOfNewAlleles[idx]];
                 }
 
                 // get corresponding index from new count
@@ -340,17 +331,38 @@ public class FlatPriorAFCalculator extends AFCalculator {
 
         return  newPLs;
     }
+    /*
+* a cache of the PL vector sizes as a function of # of alleles and ploidy
+*/
+    @VisibleForTesting
+    static int getNumLikelihoodElements(final int numAlleles, final int ploidy) {
+        return GLVECTORSIZES[numAlleles][ploidy];
+    }
 
+    private static final int MAX_NUM_ALLELES_TO_CACHE = 20;
+    private static final int MAX_NUM_SAMPLES_PER_POOL = 1000;
+
+    //Note: this is shared state but it's not modified at runtime
+    private static final int[][] GLVECTORSIZES = fillGLVectorSizeCache(MAX_NUM_ALLELES_TO_CACHE, 2*MAX_NUM_SAMPLES_PER_POOL);
+
+    private static int[][] fillGLVectorSizeCache(final int maxAlleles, final int maxPloidy) {
+        final int[][] cache = new int[maxAlleles][maxPloidy];
+        for (int numAlleles=1; numAlleles < maxAlleles; numAlleles++) {
+            for (int ploidy=0; ploidy < maxPloidy; ploidy++) {
+                cache[numAlleles][ploidy] = numAlleles == 1 ? 1 : Arrays.stream(cache[numAlleles - 1], 0, ploidy + 1).sum();
+            }
+        }
+        return cache;
+    }
 
     private static int getLinearIndex(final int[] vectorIdx, final int numAlleles, final int ploidy) {
-
         if (ploidy <= 0) {
             return 0;
         }
 
         int linearIdx = 0;
         int cumSum = ploidy;
-        for (int k=numAlleles-1;k>=1; k--) {
+        for (int k = numAlleles - 1; k >= 1; k--) {
             final int idx = vectorIdx[k];
             // how many blocks are before current position
             if (idx == 0) {
@@ -367,154 +379,6 @@ public class FlatPriorAFCalculator extends AFCalculator {
 
     }
 
-    /*
-* a cache of the PL ivector sizes as a function of # of alleles and pool sizes
-*/
-    @VisibleForTesting
-    static int getNumLikelihoodElements(final int numAlleles, final int ploidy) {
-        return GLVECTORSIZES[numAlleles][ploidy];
-    }
-
-    private static final int MAX_NUM_ALLELES_TO_CACHE = 20;
-    private static final int MAX_NUM_SAMPLES_PER_POOL = 1000;
-
-    //Note: this is shared state but it's not modified at runtime
-    private static final int[][] GLVECTORSIZES = fillGLVectorSizeCache(MAX_NUM_ALLELES_TO_CACHE, 2*MAX_NUM_SAMPLES_PER_POOL);
-
-    private static int[][] fillGLVectorSizeCache(final int maxAlleles, final int maxPloidy) {
-
-        final int[][] cache = new int[maxAlleles][maxPloidy];
-        for (int numAlleles=1; numAlleles < maxAlleles; numAlleles++) {
-            for (int ploidy=0; ploidy < maxPloidy; ploidy++) {
-                if (numAlleles == 1) {
-                    cache[numAlleles][ploidy] = 1;
-                } else if (ploidy == 1) {
-                    cache[numAlleles][ploidy] = numAlleles;
-                } else {
-                    int acc =0;
-                    for (int k=0; k <= ploidy; k++ ) {
-                        acc += cache[numAlleles - 1][ploidy - k];
-                    }
-
-                    cache[numAlleles][ploidy] = acc;
-                }
-            }
-        }
-        return cache;
-    }
-
-    /**
-     * Crucial inner class that handles addressing elements of pool likelihoods. We store likelihoods as a map
-     * of form int[] -> double (to be more precise, IntArrayWrapper -> Double).
-     * For a given ploidy (chromosome count) and number of alleles, we need a form to iterate deterministically
-     * across all possible allele conformations.
-     * Problem equivalent to listing in determistic order all possible ways in which N integers will sum to P,
-     * where N is number of alleles and P is number of chromosomes.
-     * There's an option to list all integers so that sum will be UP to P.
-     * For example, with P=2,N=2, restrictSumTo = 2 iterator will produce
-     * [2 0 ] [1 1] [ 0 2]
-     *
-     *
-     */
-    private static final class SumIterator {
-        private int[] currentState;
-        private final int[] finalState;
-        private final int restrictSumTo;
-        private final int dim;
-        private boolean hasNext;
-        private int linearIndex;
-        private int currentSum;
-
-        /**
-         * Default constructor. Typical use case: restrictSumTo = -1 if there's no sum restriction, or will generate int[]
-         * vectors so that all add to this value.
-         *
-         * @param finalState                    End state - typically we should set value to (P,P,P,...)
-         * @param restrictSumTo                 See above
-         */
-        public SumIterator(final int[] finalState,final int restrictSumTo) {
-            this.finalState = finalState;
-            this.dim = finalState.length;
-            this.restrictSumTo = restrictSumTo;
-            currentState = new int[dim];
-            reset();
-
-        }
-
-        /**
-         * Shortcut constructor for common use case: iterator will produce
-         * all vectors of length numAlleles whose sum = numChromosomes
-         * @param numAlleles              Number of alleles
-         * @param numChromosomes          Ploidy
-         */
-        public SumIterator(final int numAlleles, final int numChromosomes) {
-            this(getInitialStateVector(numAlleles, numChromosomes), numChromosomes);
-        }
-
-
-        private static int[] getInitialStateVector(final int nAlleles, final int numChromosomes) {
-            final int[] initialState = new int[nAlleles];
-            Arrays.fill(initialState, numChromosomes);
-            return initialState;
-        }
-
-        public void next() {
-            final int initialDim = (restrictSumTo > 0)?1:0;
-            hasNext = next(finalState, initialDim);
-            if (hasNext) {
-                linearIndex++;
-            }
-        }
-
-        private boolean next(final int[] finalState, final int initialDim) {
-            boolean hasNextState = false;
-            for (int currentDim=initialDim; currentDim < finalState.length; currentDim++) {
-                final int x = currentState[currentDim]+1;
-
-                if (x > finalState[currentDim] || (currentSum >= restrictSumTo && initialDim > 0)) {
-                    // update vector sum, and reset position
-                    currentSum -= currentState[currentDim];
-                    currentState[currentDim] = 0;
-                    if (currentDim >= dim-1) {
-                        hasNextState = false;
-                        break;
-                    }
-                }
-                else {
-                    currentState[currentDim] = x;
-                    hasNextState = true;
-                    currentSum++;
-                    break;
-                }
-            }
-            if (initialDim > 0) {
-                currentState[0] = restrictSumTo - currentSum;
-            }
-            return hasNextState;
-        }
-
-        public void reset() {
-            Arrays.fill(currentState, 0);
-            if (restrictSumTo > 0) {
-                currentState[0] = restrictSumTo;
-            }
-            hasNext = true;
-            linearIndex = 0;
-            currentSum = 0;
-        }
-        public int[] getCurrentVector() {
-            return currentState;
-        }
-
-        public int getLinearIndex() {
-            return linearIndex;
-        }
-
-        public boolean hasNext() {
-            return hasNext;
-        }
-    }
-
 
     /**
      * Assign genotypes (GTs) to the samples in the Variant Context greedily based on the PLs
@@ -523,9 +387,7 @@ public class FlatPriorAFCalculator extends AFCalculator {
      * @param allelesToUse         the list of alleles to choose from (corresponding to the PLs)
      * @param numChromosomes        Number of chromosomes per pool
      */
-    private static void assignGenotype(final GenotypeBuilder gb,
-                                       final double[] newLikelihoods,
-                                       final List<Allele> allelesToUse,
+    private static void assignGenotype(final GenotypeBuilder gb, final double[] newLikelihoods, final List<Allele> allelesToUse,
                                        final int numChromosomes) {
         final int numNewAltAlleles = allelesToUse.size() - 1;
 
@@ -533,7 +395,6 @@ public class FlatPriorAFCalculator extends AFCalculator {
         final int PLindex = numNewAltAlleles == 0 ? 0 : MathUtils.maxElementIndex(newLikelihoods);
         final GenotypeLikelihoodCalculator calculator = new GenotypeLikelihoodCalculators().getInstance(numChromosomes, allelesToUse.size());
         final GenotypeAlleleCounts alleleCounts = calculator.genotypeAlleleCountsAt(PLindex);
-
         gb.alleles(alleleCounts.asAlleleList(allelesToUse));
 
         // remove PLs if necessary

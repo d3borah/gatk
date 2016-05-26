@@ -1125,7 +1125,7 @@ public final class GATKVariantContextUtils {
     }
 
 
-    private static boolean likelihoodsAreUninformative(final double[] likelihoods) {
+    public static boolean likelihoodsAreUninformative(final double[] likelihoods) {
         return MathUtils.sum(likelihoods) > SUM_GL_THRESH_NOCALL;
     }
 

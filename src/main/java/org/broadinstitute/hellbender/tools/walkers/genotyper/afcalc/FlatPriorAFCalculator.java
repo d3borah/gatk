@@ -11,6 +11,9 @@ import org.broadinstitute.hellbender.utils.variant.GATKVCFConstants;
 import org.broadinstitute.hellbender.utils.variant.GATKVariantContextUtils;
 
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 /**
  * AFCalculator in which genotype posterior probabilities are equal to their likelihoods, normalized.
@@ -81,9 +84,7 @@ public class FlatPriorAFCalculator extends AFCalculator {
     /**
      * Look at VC and perhaps return a new one of reduced complexity, if that's necessary
      *
-     * Used before the call to computeLog10PNonRef to simply the calculation job at hand,
-     * if vc exceeds bounds.  For example, if VC has 100 alt alleles this function
-     * may decide to only genotype the best 2 of them.
+     * Used before the call to computeLog10PNonRef to simply the calculation
      *
      * @param vc the initial VC provided by the caller to this AFcalculation
      * @return a potentially simpler VC that's more tractable to genotype
@@ -91,31 +92,22 @@ public class FlatPriorAFCalculator extends AFCalculator {
     @Override
     protected VariantContext reduceScope(final VariantContext vc, final int defaultPloidy, final int maximumAlternativeAlleles) {
         Utils.nonNull(vc, "vc is null");
-        // don't try to genotype too many alternate alleles
         final List<Allele> inputAltAlleles = vc.getAlternateAlleles();
         final List<Allele> outputAltAlleles = reduceScopeAlleles(vc, defaultPloidy, maximumAlternativeAlleles);
 
-        // only if output allele has reduced from the input alt allele set size we should care.
-        final int altAlleleReduction = inputAltAlleles.size() - outputAltAlleles.size();
-
-        if (altAlleleReduction == 0) {
+        if (inputAltAlleles.size() == outputAltAlleles.size()) {
             return vc;
+        } else if (inputAltAlleles.size() < outputAltAlleles.size()) {
+            throw new IllegalStateException("unexpected: reduction increased the number of alt. alleles!");
         }
         logger.warn("this tool is currently set to genotype at most " + maximumAlternativeAlleles
                 + " alternate alleles in a given context, but the context at " + vc.getContig() + ":" + vc.getStart()
                 + " has " + (vc.getAlternateAlleles().size())
                 + " alternate alleles so only the top alleles will be used; see the --max_alternate_alleles argument");
 
-        final List<Allele> alleles = new ArrayList<>(maximumAlternativeAlleles + 1);
-        alleles.add(vc.getReference());
-        alleles.addAll(reduceScopeAlleles(vc, defaultPloidy, maximumAlternativeAlleles));
-        final VariantContextBuilder builder = new VariantContextBuilder(vc);
-        builder.alleles(alleles);
-        builder.genotypes(reduceScopeGenotypes(vc, defaultPloidy, alleles));
-        if (altAlleleReduction < 0) {
-            throw new IllegalStateException("unexpected: reduction increased the number of alt. alleles!: " + -altAlleleReduction + " " + vc + " " + builder.make());
-        }
-        return builder.make();
+        final List<Allele> alleles = Stream.concat(Stream.of(vc.getReference()), outputAltAlleles.stream()).collect(Collectors.toList());
+        final GenotypesContext genotypes = subsetAlleles(vc,defaultPloidy,alleles,false);
+        return new VariantContextBuilder(vc).alleles(alleles).genotypes(genotypes).make();
     }
 
 
@@ -129,14 +121,12 @@ public class FlatPriorAFCalculator extends AFCalculator {
     protected List<Allele> reduceScopeAlleles(final VariantContext vc, final int defaultPloidy, final int numAllelesToChoose) {
         Utils.nonNull(vc, "vc is null");
 
-        // Look  for the <NON_REF> allele to exclude it from the pruning if present.
         final int numOriginalAltAlleles = vc.getAlternateAlleles().size();
-
+        
         final int nonRefAltAlleleIndex = GATKVariantContextUtils.indexOfAltAllele(vc, GATKVCFConstants.NON_REF_SYMBOLIC_ALLELE, false);
         final boolean nonRefAltAllelePresent = nonRefAltAlleleIndex >= 0;
 
-        // <NON_REF> should not be considered in the downsizing, so we need to count it out when
-        // considering if alt. allele downsizing is required.
+        // <NON_REF> should not be considered in the downsizing
         final int numProperOriginalAltAlleles = numOriginalAltAlleles - (nonRefAltAllelePresent ? 1 : 0);
 
         // Avoid pointless allele reduction:
@@ -144,31 +134,30 @@ public class FlatPriorAFCalculator extends AFCalculator {
             return vc.getAlternateAlleles();
         }
 
-        final LikelihoodSum[] likelihoodSums = new LikelihoodSum[numOriginalAltAlleles];
-        for ( int i = 0; i < numOriginalAltAlleles; i++ ) {
-            final Allele allele = vc.getAlternateAllele(i);
-            likelihoodSums[i] = new LikelihoodSum(allele,i);
-        }
+        final List<LikelihoodSum> likelihoodSums = IntStream.range(0, numOriginalAltAlleles)
+                .mapToObj(n -> new LikelihoodSum(vc.getAlternateAllele(n), n)).collect(Collectors.toList());
+
+
 
         // Calculate the allele likelihood sums.
         reduceScopeCalculateLikelihoodSums(vc, defaultPloidy, likelihoodSums);
 
         // sort them by probability mass and choose the best ones
         // Make sure that the <NON_REF> allele is last if present.
-        Collections.sort(Arrays.asList(likelihoodSums), nonRefAltAllelePresent ? LIKELIHOOD_NON_REF_THEN_SUM_COMPARATOR : LIKELIHOOD_SUM_COMPARATOR);
+        Collections.sort(likelihoodSums, nonRefAltAllelePresent ? LIKELIHOOD_NON_REF_THEN_SUM_COMPARATOR : LIKELIHOOD_SUM_COMPARATOR);
 
         // We need to return the best likelihood alleles in the original alternative allele index order.
         // This heap will keep track of that index order.
         final PriorityQueue<LikelihoodSum> mostLikelyAllelesHeapByIndex = new PriorityQueue<>(numOriginalAltAlleles, LIKELIHOOD_INDEX_COMPARATOR);
 
         for ( int i = 0; i < numAllelesToChoose; i++ ) {
-            mostLikelyAllelesHeapByIndex.add(likelihoodSums[i]);
+            mostLikelyAllelesHeapByIndex.add(likelihoodSums.get(i));
         }
 
         // guaranteed no to have been added at this point thanks for checking on whether reduction was
         // needed in the first place.
         if (nonRefAltAllelePresent) {
-            mostLikelyAllelesHeapByIndex.add(likelihoodSums[nonRefAltAlleleIndex]);
+            mostLikelyAllelesHeapByIndex.add(likelihoodSums.get(nonRefAltAlleleIndex));
         }
 
         final List<Allele> orderedBestAlleles = new ArrayList<>(numAllelesToChoose);
@@ -180,17 +169,11 @@ public class FlatPriorAFCalculator extends AFCalculator {
         return orderedBestAlleles;
     }
 
-    protected GenotypesContext reduceScopeGenotypes(final VariantContext vc, final int defaultPloidy, final List<Allele> allelesToUse) {
-        Utils.nonNull(vc, "vc is null");
-        Utils.nonNull(allelesToUse, "allelesToUse is null");
-        return subsetAlleles(vc,defaultPloidy,allelesToUse,false);
-    }
-
-    protected void reduceScopeCalculateLikelihoodSums(final VariantContext vc, final int defaultPloidy, final LikelihoodSum[] likelihoodSums) {
+    protected void reduceScopeCalculateLikelihoodSums(final VariantContext vc, final int defaultPloidy, final List<LikelihoodSum> likelihoodSums) {
         Utils.nonNull(vc, "vc is null");
         Utils.nonNull(likelihoodSums, "likelihoodSums is null");
 
-        final int numOriginalAltAlleles = likelihoodSums.length;
+        final int numOriginalAltAlleles = likelihoodSums.size();
         final GenotypesContext genotypes = vc.getGenotypes();
         for ( final Genotype genotype : genotypes.iterateInSampleNameOrder() ) {
             if (!genotype.hasPL()) {
@@ -211,7 +194,7 @@ public class FlatPriorAFCalculator extends AFCalculator {
             // by convention, first count coming from getAlleleCountFromPLIndex comes from reference allele
             for (int k=1; k < acCount.length;k++) {
                 if (acCount[k] > 0) {
-                    likelihoodSums[k - 1].sum += acCount[k] * bestToHomRefDiffGL;
+                    likelihoodSums.get(k - 1).sum += acCount[k] * bestToHomRefDiffGL;
                 }
             }
         }
@@ -225,7 +208,6 @@ public class FlatPriorAFCalculator extends AFCalculator {
      * @return                            Allele count conformation, according to iteration order from SumIterator
      */
     private static int[] getAlleleCountFromPLIndex(final int nAlleles, final int numChromosomes, final int PLindex) {
-
         final GenotypeLikelihoodCalculator calculator = new GenotypeLikelihoodCalculators().getInstance(numChromosomes, nAlleles);
         final GenotypeAlleleCounts alleleCounts = calculator.genotypeAlleleCountsAt(PLindex);
         return alleleCounts.alleleCountsByIndex(nAlleles - 1);
@@ -269,21 +251,10 @@ public class FlatPriorAFCalculator extends AFCalculator {
      * @param assignGenotypes                   true: assign hard genotypes, false: leave as no-call
      * @return                                  GenotypesContext with new PLs
      */
-    public GenotypesContext subsetAlleles(final VariantContext vc,
-                                          final int defaultPloidy,
-                                          final List<Allele> allelesToUse,
+    public GenotypesContext subsetAlleles(final VariantContext vc, final int defaultPloidy, final List<Allele> allelesToUse,
                                           final boolean assignGenotypes) {
         Utils.nonNull(vc, "vc is null");
         Utils.nonNull(allelesToUse, "allelesToUse is null");
-
-        // the genotypes with PLs
-        final GenotypesContext oldGTs = vc.getGenotypes();
-
-        // samples
-        final List<String> sampleIndices = oldGTs.getSampleNamesOrderedByName();
-
-        // the new genotypes to create
-        final GenotypesContext newGTs = GenotypesContext.create();
 
         // we need to determine which of the alternate alleles (and hence the likelihoods) to use and carry forward
         final int numOriginalAltAlleles = vc.getAlternateAlleles().size();
@@ -291,42 +262,29 @@ public class FlatPriorAFCalculator extends AFCalculator {
 
 
         // create the new genotypes
-        for ( int k = 0; k < oldGTs.size(); k++ ) {
-            final Genotype g = oldGTs.get(sampleIndices.get(k));
-            final int declaredPloidy = g.getPloidy();
-            final int ploidy = declaredPloidy <= 0 ? defaultPloidy : declaredPloidy;
+        final GenotypesContext newGTs = GenotypesContext.create();
+        for ( final Genotype g : vc.getGenotypes().iterateInSampleNameOrder() ) {
+            final int ploidy = g.getPloidy() > 0 ? g.getPloidy() : defaultPloidy;
             if ( !g.hasLikelihoods() ) {
                 newGTs.add(GenotypeBuilder.create(g.getSampleName(), GATKVariantContextUtils.noCallAlleles(ploidy)));
                 continue;
             }
 
             // create the new likelihoods array from the alleles we are allowed to use
+            // Optimization: if no new alt alleles (pure ref call), keep original likelihoods and skip normalization and subsetting
             final double[] originalLikelihoods = g.getLikelihoods().getAsVector();
-            double[] newLikelihoods;
-
-            // Optimization: if # of new alt alleles = 0 (pure ref call), keep original likelihoods so we skip normalization
-            // and subsetting
-            if ( numOriginalAltAlleles == numNewAltAlleles || numNewAltAlleles == 0) {
-                newLikelihoods = originalLikelihoods;
-            } else {
-                newLikelihoods = subsetToAlleles(originalLikelihoods, ploidy, vc.getAlleles(), allelesToUse);
-
-                // might need to re-normalize
-                newLikelihoods = MathUtils.normalizeFromLog10(newLikelihoods, false, true);
-            }
+            double[] newLikelihoods = numOriginalAltAlleles == numNewAltAlleles || numNewAltAlleles == 0 ? originalLikelihoods :
+                    MathUtils.normalizeFromLog10(subsetToAlleles(originalLikelihoods, ploidy, vc.getAlleles(), allelesToUse), false, true);
 
             // if there is no mass on the (new) likelihoods, then just no-call the sample
-            if ( MathUtils.sum(newLikelihoods) > GATKVariantContextUtils.SUM_GL_THRESH_NOCALL ) {
+            if ( GATKVariantContextUtils.likelihoodsAreUninformative(newLikelihoods) ) {
                 newGTs.add(GenotypeBuilder.create(g.getSampleName(), GATKVariantContextUtils.noCallAlleles(ploidy)));
             }
             else {
                 final GenotypeBuilder gb = new GenotypeBuilder(g);
 
-                if ( numNewAltAlleles == 0 ) {
-                    gb.noPL();
-                } else {
-                    gb.PL(newLikelihoods);
-                }
+                //TODO: is it really necessary to handle numNewAltAlleles == 0 separately?
+                gb.PL(numNewAltAlleles == 0 ? null : newLikelihoods);
 
                 // if we weren't asked to assign a genotype, then just no-call the sample
                 if ( !assignGenotypes || MathUtils.sum(newLikelihoods) > GATKVariantContextUtils.SUM_GL_THRESH_NOCALL ) {

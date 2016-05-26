@@ -12,7 +12,6 @@ import org.broadinstitute.hellbender.utils.variant.GATKVariantContextUtils;
 
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 /**
@@ -122,7 +121,7 @@ public class FlatPriorAFCalculator extends AFCalculator {
         Utils.nonNull(vc, "vc is null");
 
         final int numOriginalAltAlleles = vc.getAlternateAlleles().size();
-        
+
         final int nonRefAltAlleleIndex = GATKVariantContextUtils.indexOfAltAllele(vc, GATKVCFConstants.NON_REF_SYMBOLIC_ALLELE, false);
         final boolean nonRefAltAllelePresent = nonRefAltAlleleIndex >= 0;
 
@@ -134,25 +133,32 @@ public class FlatPriorAFCalculator extends AFCalculator {
             return vc.getAlternateAlleles();
         }
 
-        final List<LikelihoodSum> likelihoodSums = IntStream.range(0, numOriginalAltAlleles)
-                .mapToObj(n -> new LikelihoodSum(vc.getAlternateAllele(n), n)).collect(Collectors.toList());
+        final double[] likelihoodSums = new double[numOriginalAltAlleles + 1]; //likelihood sums for all alleles including ref
+        for ( final Genotype genotype : vc.getGenotypes().iterateInSampleNameOrder() ) {
+            final double[] gls = genotype.getLikelihoods().getAsVector();
+            if (gls == null || GATKVariantContextUtils.likelihoodsAreUninformative(gls)) {
+                continue;
+            }
 
+            final int indexOfBestGL = MathUtils.maxElementIndex(gls);
 
+            final double GLDiffBetweenRefAndBest = gls[indexOfBestGL] - gls[PL_INDEX_OF_HOM_REF];
+            final int ploidy = genotype.getPloidy() > 0 ? genotype.getPloidy() : defaultPloidy;
 
-        // Calculate the allele likelihood sums.
-        reduceScopeCalculateLikelihoodSums(vc, defaultPloidy, likelihoodSums);
-
-        // sort them by probability mass and choose the best ones
-        // Make sure that the <NON_REF> allele is last if present.
+            final int[] acCount = getAlleleCountFromPLIndex(1 + numOriginalAltAlleles, ploidy, indexOfBestGL);
+            // by convention, first count coming from getAlleleCountFromPLIndex comes from reference allele
+            for (int k=1; k < acCount.length; k++) {
+                if (acCount[k] > 0) {
+                    likelihoodSums[k] += acCount[k] * GLDiffBetweenRefAndBest;
+                }
+            }
+        }
         Collections.sort(likelihoodSums, nonRefAltAllelePresent ? LIKELIHOOD_NON_REF_THEN_SUM_COMPARATOR : LIKELIHOOD_SUM_COMPARATOR);
 
-        // We need to return the best likelihood alleles in the original alternative allele index order.
-        // This heap will keep track of that index order.
+        // Keep track of original index order of likelihoods via a heap
         final PriorityQueue<LikelihoodSum> mostLikelyAllelesHeapByIndex = new PriorityQueue<>(numOriginalAltAlleles, LIKELIHOOD_INDEX_COMPARATOR);
+        mostLikelyAllelesHeapByIndex.addAll(likelihoodSums.subList(0, numAllelesToChoose));
 
-        for ( int i = 0; i < numAllelesToChoose; i++ ) {
-            mostLikelyAllelesHeapByIndex.add(likelihoodSums.get(i));
-        }
 
         // guaranteed no to have been added at this point thanks for checking on whether reduction was
         // needed in the first place.
@@ -167,37 +173,6 @@ public class FlatPriorAFCalculator extends AFCalculator {
         }
 
         return orderedBestAlleles;
-    }
-
-    protected void reduceScopeCalculateLikelihoodSums(final VariantContext vc, final int defaultPloidy, final List<LikelihoodSum> likelihoodSums) {
-        Utils.nonNull(vc, "vc is null");
-        Utils.nonNull(likelihoodSums, "likelihoodSums is null");
-
-        final int numOriginalAltAlleles = likelihoodSums.size();
-        final GenotypesContext genotypes = vc.getGenotypes();
-        for ( final Genotype genotype : genotypes.iterateInSampleNameOrder() ) {
-            if (!genotype.hasPL()) {
-                continue;
-            }
-            final double[] gls = genotype.getLikelihoods().getAsVector();
-            if (MathUtils.sum(gls) >= GATKVariantContextUtils.SUM_GL_THRESH_NOCALL) {
-                continue;
-            }
-
-            final int PLindexOfBestGL = MathUtils.maxElementIndex(gls);
-
-            final double bestToHomRefDiffGL = PLindexOfBestGL == PL_INDEX_OF_HOM_REF ? 0.0 : gls[PLindexOfBestGL] - gls[PL_INDEX_OF_HOM_REF];
-            final int declaredPloidy = genotype.getPloidy();
-            final int ploidy = declaredPloidy <= 0 ? defaultPloidy : declaredPloidy;
-
-            final int[] acCount = getAlleleCountFromPLIndex(1 + numOriginalAltAlleles, ploidy, PLindexOfBestGL);
-            // by convention, first count coming from getAlleleCountFromPLIndex comes from reference allele
-            for (int k=1; k < acCount.length;k++) {
-                if (acCount[k] > 0) {
-                    likelihoodSums.get(k - 1).sum += acCount[k] * bestToHomRefDiffGL;
-                }
-            }
-        }
     }
 
     /**
@@ -315,15 +290,9 @@ public class FlatPriorAFCalculator extends AFCalculator {
         final int newPLSize = getNumLikelihoodElements(allelesToSubset.size(), numChromosomes);
         final double[] newPLs = new double[newPLSize];
 
-
-        int idx = 0;
         // First fill boolean array stating whether each original allele is present in new mapping
-        final boolean [] allelePresent = new boolean[originalAlleles.size()];
-        for ( final Allele allele : originalAlleles ) {
-            allelePresent[idx++] = allelesToSubset.contains(allele);
-        }
-
-
+        final List<Boolean> allelePresent = originalAlleles.stream().map(a -> allelesToSubset.contains(a)).collect(Collectors.toList());
+        
         // compute mapping from old idx to new idx
         // This might be needed in case new allele set is not ordered in the same way as old set
         // Example. Original alleles: {T*,C,G,A}. New alleles: {G,C}. Permutation key = [2,1]
@@ -346,8 +315,8 @@ public class FlatPriorAFCalculator extends AFCalculator {
             final double pl = oldLikelihoods[iterator.getLinearIndex()];
 
             boolean keyPresent = true;
-            for (int k=0; k < allelePresent.length; k++) {
-                if (pVec[k] > 0 && !allelePresent[k]) {
+            for (int k=0; k < allelePresent.size(); k++) {
+                if (pVec[k] > 0 && !allelePresent.get(k)) {
                     keyPresent = false;
                 }
             }
@@ -358,7 +327,7 @@ public class FlatPriorAFCalculator extends AFCalculator {
 
                 // map from old allele mapping count to new allele mapping
                 // In pseudo-Matlab notation: newCount = vec[permutationKey] for permutationKey vector
-                for (idx = 0; idx < newCount.length; idx++) {
+                for (int idx = 0; idx < newCount.length; idx++) {
                     newCount[idx] = pVec[permutationKey[idx]];
                 }
 

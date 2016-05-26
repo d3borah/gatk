@@ -19,15 +19,13 @@ import java.util.*;
  * the other implementations and their associated classes like StateTracker and ExactACSet.
  */
 public class FlatPriorAFCalculator extends AFCalculator {
-
-
     @Override
     protected AFCalculationResult computeLog10PNonRef(final VariantContext vc, final int defaultPloidy) {
         Utils.nonNull(vc, "vc is null");
 
         final int[] alleleCountsOfMLE = null;
         final List<Allele> allelesUsedInGenotyping = vc.getAlleles();
-        final double posteriorOfAFEq0 = 0.5;    //TODO: placeholder
+        final double log10PosteriorOfAFEq0 = -1.0;    //TODO: placeholder
         final Map<Allele, Double> log10pRefByAllele = null;
 
         final GenotypesContext GLs = vc.getGenotypes();
@@ -42,14 +40,8 @@ public class FlatPriorAFCalculator extends AFCalculator {
 
         }
 
-        return new AFCalculationResult(alleleCountsOfMLE, allelesUsedInGenotyping, posteriorOfAFEq0, log10pRefByAllele);
+        return new AFCalculationResult(alleleCountsOfMLE, allelesUsedInGenotyping, log10PosteriorOfAFEq0, log10pRefByAllele);
     }
-
-
-
-
-
-
 
 
     /**

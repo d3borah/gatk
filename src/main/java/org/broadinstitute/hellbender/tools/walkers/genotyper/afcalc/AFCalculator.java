@@ -131,12 +131,4 @@ public abstract class AFCalculator {
         return stateTracker;
     }
 
-    /**
-     * Please don't use this method in production.
-     */
-    @VisibleForTesting
-    int getAltAlleleCountOfMAP(final int allele) {
-        return getStateTracker(false,allele + 1).getAlleleCountsOfMAP()[allele];
-    }
-
 }

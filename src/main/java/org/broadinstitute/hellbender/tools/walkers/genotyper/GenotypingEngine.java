@@ -97,16 +97,14 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
      *  the model that need to be applied.
      *
      * @param vc variant-context to complete.
-     * @param model model name.
      *
      * @throws IllegalArgumentException if {@code model} or {@code vc} is {@code null}.
      *
      * @return can be {@code null} indicating that genotyping it not possible with the information provided.
      */
-    public VariantCallContext calculateGenotypes(final VariantContext vc, final GenotypeLikelihoodsCalculationModel model, final SAMFileHeader header) {
+    public VariantCallContext calculateGenotypes(final VariantContext vc, final SAMFileHeader header) {
         Utils.nonNull(vc, "vc cannot be null");
-        Utils.nonNull(model, "the model cannot be null");
-        return calculateGenotypes(null,null,null,null,vc,model,false,null,header);
+        return calculateGenotypes(null,null,null,null,vc,false,null,header);
     }
 
     /**
@@ -117,7 +115,6 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
      * @param rawContext                         Raw context
      * @param stratifiedContexts                 Stratified alignment contexts
      * @param vc                                 Input VC
-     * @param model                              GL calculation model
      * @param inheritAttributesFromInputVC       Output VC will contain attributes inherited from input vc
      * @return                                   VC with assigned genotypes
      */
@@ -126,7 +123,6 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
                                                     final AlignmentContext rawContext,
                                                     Map<String, AlignmentContext> stratifiedContexts,
                                                     final VariantContext vc,
-                                                    final GenotypeLikelihoodsCalculationModel model,
                                                     final boolean inheritAttributesFromInputVC,
                                                     final Map<String, PerReadAlleleLikelihoodMap> perReadAlleleLikelihoodMap,
                                                     final SAMFileHeader header) {
@@ -140,7 +136,7 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
         final int defaultPloidy = configuration.genotypeArgs.samplePloidy;
         final int maxAltAlleles = configuration.genotypeArgs.MAX_ALTERNATE_ALLELES;
         final AFCalculator afCalculator = new GeneralPloidyExactAFCalculator();
-        final AFCalculationResult AFresult = afCalculator.getLog10PNonRef(vc, defaultPloidy,maxAltAlleles, getAlleleFrequencyPriors(vc,defaultPloidy,model));
+        final AFCalculationResult AFresult = afCalculator.getLog10PNonRef(vc, defaultPloidy,maxAltAlleles, getAlleleFrequencyPriors(vc,defaultPloidy));
 
         final OutputAlleleSubset outputAlternativeAlleles = calculateOutputAlleleSubset(AFresult);
 
@@ -162,7 +158,7 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
         if ( !passesEmitThreshold(phredScaledConfidence, outputAlternativeAlleles.siteIsMonomorphic) && !forceSiteEmission()) {
             // technically, at this point our confidence in a reference call isn't accurately estimated
             //  because it didn't take into account samples with no data, so let's get a better estimate
-            final double[] AFpriors = getAlleleFrequencyPriors(vc, defaultPloidy, model);
+            final double[] AFpriors = getAlleleFrequencyPriors(vc, defaultPloidy);
             final int INDEX_FOR_AC_EQUALS_1 = 1;
             return limitedContext ? null : estimateReferenceConfidence(vc, stratifiedContexts, AFpriors[INDEX_FOR_AC_EQUALS_1], true, PoFGT0);
         }
@@ -182,8 +178,9 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
         builder.genotypes(genotypes);
 
         // *** note that calculating strand bias involves overwriting data structures, so we do that last
-        final Map<String, Object> attributes = composeCallAttributes(inheritAttributesFromInputVC, vc, rawContext, stratifiedContexts, features, refContext,
-                outputAlternativeAlleles.alternativeAlleleMLECounts(), outputAlternativeAlleles.siteIsMonomorphic, AFresult, outputAlternativeAlleles.outputAlleles(vc.getReference()),genotypes,model,perReadAlleleLikelihoodMap);
+        final Map<String, Object> attributes = composeCallAttributes(inheritAttributesFromInputVC, vc, rawContext, stratifiedContexts,
+                features, refContext, outputAlternativeAlleles.alternativeAlleleMLECounts(), outputAlternativeAlleles.siteIsMonomorphic,
+                AFresult, outputAlternativeAlleles.outputAlleles(vc.getReference()),genotypes,perReadAlleleLikelihoodMap);
 
         builder.attributes(attributes);
 
@@ -411,11 +408,10 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
      *
      * @param vc the target variant-context, use to determine the total ploidy thus the possible ACs.
      * @param defaultPloidy default ploidy to be assume if we do not have the ploidy for some sample in {@code vc}.
-     * @param model the calculation model (SNP,INDEL or MIXED) whose priors are to be retrieved.
      * @throws java.lang.NullPointerException if either {@code vc} or {@code model} is {@code null}
      * @return never {@code null}, an array with exactly <code>total-ploidy(vc) + 1</code> positions.
      */
-    protected final double[] getAlleleFrequencyPriors( final VariantContext vc, final int defaultPloidy, final GenotypeLikelihoodsCalculationModel model ) {
+    protected final double[] getAlleleFrequencyPriors( final VariantContext vc, final int defaultPloidy) {
         final int totalPloidy = GATKVariantContextUtils.totalPloidy(vc, defaultPloidy);
         return AFPriorProvider.forTotalPloidy(totalPloidy);
     }
@@ -464,7 +460,7 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
     protected Map<String,Object> composeCallAttributes(final boolean inheritAttributesFromInputVC, final VariantContext vc,
                                                        final AlignmentContext rawContext, final Map<String, AlignmentContext> stratifiedContexts, final FeatureContext tracker, final ReferenceContext refContext, final List<Integer> alleleCountsofMLE, final boolean bestGuessIsRef,
                                                        final AFCalculationResult AFresult, final List<Allele> allAllelesToUse, final GenotypesContext genotypes,
-                                                       final GenotypeLikelihoodsCalculationModel model, final Map<String, PerReadAlleleLikelihoodMap> perReadAlleleLikelihoodMap) {
+                                                       final Map<String, PerReadAlleleLikelihoodMap> perReadAlleleLikelihoodMap) {
         final Map<String, Object> attributes = new LinkedHashMap<>();
 
         final boolean limitedContext = tracker == null || refContext == null || rawContext == null || stratifiedContexts == null;

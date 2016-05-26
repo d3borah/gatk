@@ -136,7 +136,7 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
         final int defaultPloidy = configuration.genotypeArgs.samplePloidy;
         final int maxAltAlleles = configuration.genotypeArgs.MAX_ALTERNATE_ALLELES;
         final AFCalculator afCalculator = new FlatPriorAFCalculator();
-        final AFCalculationResult AFresult = afCalculator.getLog10PNonRef(vc, defaultPloidy,maxAltAlleles, getAlleleFrequencyPriors(vc,defaultPloidy));
+        final AFCalculationResult AFresult = afCalculator.getLog10PNonRef(vc, defaultPloidy,maxAltAlleles);
 
         final OutputAlleleSubset outputAlternativeAlleles = calculateOutputAlleleSubset(AFresult);
 
@@ -158,9 +158,7 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
         if ( !passesEmitThreshold(phredScaledConfidence, outputAlternativeAlleles.siteIsMonomorphic) && !forceSiteEmission()) {
             // technically, at this point our confidence in a reference call isn't accurately estimated
             //  because it didn't take into account samples with no data, so let's get a better estimate
-            final double[] AFpriors = getAlleleFrequencyPriors(vc, defaultPloidy);
-            final int INDEX_FOR_AC_EQUALS_1 = 1;
-            return limitedContext ? null : estimateReferenceConfidence(vc, stratifiedContexts, AFpriors[INDEX_FOR_AC_EQUALS_1], true, PoFGT0);
+            return limitedContext ? null : estimateReferenceConfidence(vc, stratifiedContexts, true, PoFGT0);
         }
 
         // start constructing the resulting VC
@@ -380,7 +378,10 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
      */
     protected abstract boolean forceSiteEmission();
 
-    protected final VariantCallContext estimateReferenceConfidence(final VariantContext vc, final Map<String, AlignmentContext> contexts, final double log10OfTheta, final boolean ignoreCoveredSamples, final double initialPofRef) {
+    protected final VariantCallContext estimateReferenceConfidence(final VariantContext vc, final Map<String, AlignmentContext> contexts, final boolean ignoreCoveredSamples, final double initialPofRef) {
+        //TODO: deal with this!!!!!!!!!!!
+        final double log10OfTheta = Math.log10(1e-3);
+
         if ( contexts == null ) {
             return null;
         }
@@ -400,20 +401,6 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
         }
 
         return new VariantCallContext(vc, QualityUtils.phredScaleLog10CorrectRate(log10POfRef) >= configuration.genotypeArgs.STANDARD_CONFIDENCE_FOR_CALLING, false);
-    }
-
-    /**
-     * Returns the log10 prior probability for all possible allele counts from 0 to N where N is the total number of
-     * genomes (total-ploidy).
-     *
-     * @param vc the target variant-context, use to determine the total ploidy thus the possible ACs.
-     * @param defaultPloidy default ploidy to be assume if we do not have the ploidy for some sample in {@code vc}.
-     * @throws java.lang.NullPointerException if either {@code vc} or {@code model} is {@code null}
-     * @return never {@code null}, an array with exactly <code>total-ploidy(vc) + 1</code> positions.
-     */
-    protected final double[] getAlleleFrequencyPriors( final VariantContext vc, final int defaultPloidy) {
-        final int totalPloidy = GATKVariantContextUtils.totalPloidy(vc, defaultPloidy);
-        return AFPriorProvider.forTotalPloidy(totalPloidy);
     }
 
     /**
@@ -493,6 +480,9 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
         return alleleCountsofMLE.stream().map(AC -> Math.min(1.0, (double) AC / AN)).collect(Collectors.toList());
     }
 
+
+    //TODO: I imposed a flat prior.
+    //TODO: why is this not part of calculateGenotypes?????
     /**
      * Calculates the active state profile value for a single sample.
      *
@@ -505,16 +495,15 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
         } else if (log10GenotypeLikelihoods.length != this.configuration.genotypeArgs.samplePloidy + 1) {
             throw new IllegalArgumentException("wrong likelihoods dimensions");
         } else {
-            final double[] log10Priors = AFPriorProvider.forTotalPloidy(this.configuration.genotypeArgs.samplePloidy);
             final double log10ACeq0Likelihood = log10GenotypeLikelihoods[0];
-            final double log10ACeq0Prior = log10Priors[0];
-            final double log10ACeq0Posterior = log10ACeq0Likelihood + log10ACeq0Prior;
+            final double log10ACeq0Posterior = log10ACeq0Likelihood;
 
             // If the Maximum a-posteriori AC is 0 then the profile value must be 0.0 as per existing code; it does
             // not matter whether a AC > 0 is at all plausible.
             boolean mapACeq0 = true;
-            for (int AC = 1; AC < log10Priors.length; AC++) {
-                if (log10Priors[AC] + log10GenotypeLikelihoods[AC] > log10ACeq0Posterior) {
+            //TODO: I think the +1 is correct
+            for (int AC = 1; AC < this.configuration.genotypeArgs.samplePloidy + 1; AC++) {
+                if (log10GenotypeLikelihoods[AC] > log10ACeq0Posterior) {
                     mapACeq0 = false;
                     break;
                 }
@@ -528,8 +517,7 @@ public abstract class GenotypingEngine<Config extends StandardCallerArgumentColl
             //TODO Sum(a_i * b_i) is equivalent to Sum(a_i) * Sum(b_i)
             //TODO This has to be changed not just here but also in the AFCalculators (StateTracker).
             final double log10ACgt0Likelihood = MathUtils.approximateLog10SumLog10(log10GenotypeLikelihoods, 1, log10GenotypeLikelihoods.length);
-            final double log10ACgt0Prior = MathUtils.approximateLog10SumLog10(log10Priors, 1, log10Priors.length);
-            final double log10ACgt0Posterior = log10ACgt0Likelihood + log10ACgt0Prior;
+            final double log10ACgt0Posterior = log10ACgt0Likelihood;
             final double log10PosteriorNormalizationConstant = MathUtils.approximateLog10SumLog10(log10ACeq0Posterior, log10ACgt0Posterior);
             //TODO End of lousy part.
 

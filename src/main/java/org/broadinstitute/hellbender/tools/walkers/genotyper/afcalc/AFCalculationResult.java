@@ -16,10 +16,8 @@ import java.util.*;
  * that users of this code can rely on the values coming out of these functions.
  */
 public final class AFCalculationResult {
-    private static final int AF0 = 0;
-    private static final int AF1p = 1;
-
-    private final double[] log10PosteriorsOfAC;
+    //TODO: this should be log space to avoid numerical issues
+    private final double posteriorOfACEq0;  //not log space
 
     private final Map<Allele, Double> log10pRefByAllele;
 
@@ -38,13 +36,13 @@ public final class AFCalculationResult {
      */
     public AFCalculationResult(final int[] alleleCountsOfMLE,
                                final List<Allele> allelesUsedInGenotyping,
-                               final double[] log10LikelihoodsOfAC,
-                               final double[] log10PriorsOfAC,
+                               final double posteriorOfACEq0,
                                final Map<Allele, Double> log10pRefByAllele) {
         this.alleleCountsOfMLE = Utils.nonNull(alleleCountsOfMLE, "alleleCountsOfMLE cannot be null").clone();
         this.allelesUsedInGenotyping = Collections.unmodifiableList(new ArrayList<>(allelesUsedInGenotyping));
-        this.log10PosteriorsOfAC = computePosteriors(log10LikelihoodsOfAC, log10PriorsOfAC);
         this.log10pRefByAllele = Collections.unmodifiableMap(new LinkedHashMap<>(log10pRefByAllele));
+        Utils.validateArg(posteriorOfACEq0 >= 0 && posteriorOfACEq0 <= 1, "posterior must be a probability");
+        this.posteriorOfACEq0 = posteriorOfACEq0;
     }
 
     /**
@@ -75,14 +73,14 @@ public final class AFCalculationResult {
      * Get the log10 normalized -- across all ACs -- posterior probability of AC == 0 for all alleles
      */
     public double getLog10PosteriorOfAFEq0() {
-        return log10PosteriorsOfAC[AF0];
+        return Math.log(posteriorOfACEq0);
     }
 
     /**
      * Get the log10 normalized -- across all ACs -- posterior probability of AC > 0 for any alleles
      */
     public double getLog10PosteriorOfAFGT0() {
-        return log10PosteriorsOfAC[AF1p];
+        return Math.log(1-posteriorOfACEq0);
     }
 
     /**
@@ -145,18 +143,18 @@ public final class AFCalculationResult {
         return log10pNonRef;
     }
 
+    //TODO: I imposed flat priors
     /**
      * Returns the log10 normalized posteriors given the log10 likelihoods and priors
      *
      * @param log10LikelihoodsOfAC
-     * @param log10PriorsOfAC
      *
      * @return freshly allocated log10 normalized posteriors vector
      */
-    private static double[] computePosteriors(final double[] log10LikelihoodsOfAC, final double[] log10PriorsOfAC) {
+    private static double[] computePosteriors(final double[] log10LikelihoodsOfAC) {
         final double[] log10UnnormalizedPosteriors = new double[log10LikelihoodsOfAC.length];
         for ( int i = 0; i < log10LikelihoodsOfAC.length; i++ ) {
-            log10UnnormalizedPosteriors[i] = log10LikelihoodsOfAC[i] + log10PriorsOfAC[i];
+            log10UnnormalizedPosteriors[i] = log10LikelihoodsOfAC[i];
         }
         return MathUtils.normalizeFromLog10(log10UnnormalizedPosteriors, true, false);
     }

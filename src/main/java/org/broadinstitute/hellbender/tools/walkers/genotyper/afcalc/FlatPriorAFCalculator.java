@@ -22,15 +22,12 @@ public class FlatPriorAFCalculator extends AFCalculator {
 
 
     @Override
-    protected AFCalculationResult computeLog10PNonRef(final VariantContext vc, final int defaultPloidy,
-                                                      final double[] log10AlleleFrequencyPriors) {
+    protected AFCalculationResult computeLog10PNonRef(final VariantContext vc, final int defaultPloidy) {
         Utils.nonNull(vc, "vc is null");
-        Utils.nonNull(log10AlleleFrequencyPriors, "log10AlleleFrequencyPriors is null");
 
         final int[] alleleCountsOfMLE = null;
         final List<Allele> allelesUsedInGenotyping = vc.getAlleles();
-        final double[] log10LikelihoodsOfAC = null; //refactor AFCalculationResult to not use this!!
-        final double[] log10PriorsOfAC = null;
+        final double posteriorOfAFEq0 = 0.5;    //TODO: placeholder
         final Map<Allele, Double> log10pRefByAllele = null;
 
         final GenotypesContext GLs = vc.getGenotypes();
@@ -45,7 +42,7 @@ public class FlatPriorAFCalculator extends AFCalculator {
 
         }
 
-        return new AFCalculationResult(alleleCountsOfMLE, allelesUsedInGenotyping, log10LikelihoodsOfAC, log10PriorsOfAC, log10pRefByAllele);
+        return new AFCalculationResult(alleleCountsOfMLE, allelesUsedInGenotyping, posteriorOfAFEq0, log10pRefByAllele);
     }
 
 

@@ -23,19 +23,17 @@ public abstract class AFCalculator {
      *
      * @param vc the VariantContext holding the alleles and sample information.  The VariantContext
      *           must have at least 1 alternative allele
-     * @param log10AlleleFrequencyPriors a prior vector nSamples x 2 in length indicating the Pr(AF = i)
      * @return result (for programming convenience)
      */
-    public AFCalculationResult getLog10PNonRef(final VariantContext vc, final int defaultPloidy, final int maximumAlternativeAlleles, final double[] log10AlleleFrequencyPriors) {
+    public AFCalculationResult getLog10PNonRef(final VariantContext vc, final int defaultPloidy, final int maximumAlternativeAlleles) {
         Utils.nonNull(vc, "VariantContext cannot be null");
-        Utils.nonNull(log10AlleleFrequencyPriors, "priors vector cannot be null");
         if ( vc.getNAlleles() == 1 ) {
             throw new IllegalArgumentException("VariantContext has only a single reference allele, but getLog10PNonRef requires at least one at all " + vc);
         }
 
         final VariantContext vcWorking = reduceScope(vc,defaultPloidy, maximumAlternativeAlleles);
 
-        return computeLog10PNonRef(vcWorking, defaultPloidy, log10AlleleFrequencyPriors);
+        return computeLog10PNonRef(vcWorking, defaultPloidy);
     }
 
     // ---------------------------------------------------------------------------
@@ -62,11 +60,9 @@ public abstract class AFCalculator {
      *
      * @param vc                                variant context with alleles and genotype likelihoods,
      *                                          must have at least one alt allele
-     * @param log10AlleleFrequencyPriors        priors
      * @return a AFCalcResult object describing the results of this calculation
      */
-    protected abstract AFCalculationResult computeLog10PNonRef(final VariantContext vc, final int defaultPloidy,
-                                                        final double[] log10AlleleFrequencyPriors);
+    protected abstract AFCalculationResult computeLog10PNonRef(final VariantContext vc, final int defaultPloidy);
 
     /**
      * Subset VC to the just allelesToUse, updating genotype likelihoods

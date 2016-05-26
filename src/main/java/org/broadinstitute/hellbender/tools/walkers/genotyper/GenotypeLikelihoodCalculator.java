@@ -9,7 +9,7 @@ import java.util.Comparator;
 import java.util.PriorityQueue;
 
 /**
- * Helper to calculate genotype likelihoods given a ploidy and an allele count (number of possible distinct alleles).
+ * This class calculates genotype likelihoods from allele likelihoods given ploidy and allele count (number of distinct alleles).
  */
 public final class GenotypeLikelihoodCalculator {
 
@@ -40,19 +40,10 @@ public final class GenotypeLikelihoodCalculator {
      */
     private final GenotypeAlleleCounts[] genotypeAlleleCounts;
 
-    /**
-     * Number of genotypes given this calculator {@link #ploidy} and {@link #alleleCount}.
-     */
     private final int genotypeCount;
 
-    /**
-     * Number of genotyping alleles for this calculator.
-     */
     private final int alleleCount;
 
-    /**
-     * Ploidy for this calculator.
-     */
     private final int ploidy;
 
     /**

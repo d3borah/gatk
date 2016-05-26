@@ -3,6 +3,7 @@ package org.broadinstitute.hellbender.tools.walkers.genotyper;
 import htsjdk.variant.variantcontext.Allele;
 import org.broadinstitute.hellbender.utils.Utils;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -57,9 +58,6 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
 
     private double log10CombinationCount;
 
-    /**
-     * The ploidy of the genotype.
-     */
     private final int ploidy;
 
     /**
@@ -67,9 +65,7 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
      */
     private int[] sortedAlleleCounts;
 
-    /**
-     * Number of different alleles in the genotype.
-     */
+    // number of different alleles contained in this genotype
     private int distinctAlleleCount;
 
     /**
@@ -114,10 +110,6 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
         this.log10CombinationCount = log10CombinationCount;
     }
 
-    /**
-     * Returns the genotype's ploidy.
-     * @return 0 or greater.
-     */
     public int ploidy() {
         return ploidy;
     }
@@ -286,11 +278,6 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
         return new GenotypeAlleleCounts(ploidy, index + 1, newSortedAlleleCounts);
     }
 
-    /**
-     * Returns the number of different alleles that participate in the genotype.
-     *
-     * @return 0 or greater.
-     */
     public int distinctAlleleCount() {
         return distinctAlleleCount;
     }
@@ -576,13 +563,9 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
      */
     public void copyAlleleCounts(final int[] dest, final int offset) {
         Utils.nonNull(dest, "the destination cannot be null");
-        if (offset < 0) {
-            throw new IllegalArgumentException("the offset cannot be negative");
-        }
+        Utils.validateArg(offset >= 0, "the offset cannot be negative");
         final int sortedAlleleCountsLength = distinctAlleleCount << 1;
-        if (offset + sortedAlleleCountsLength > dest.length) {
-            throw new IllegalArgumentException("the input array does not have enough capacity");
-        }
+        Utils.validateArg(offset + sortedAlleleCountsLength <= dest.length, "the input array does not have enough capacity");
         System.arraycopy(sortedAlleleCounts, 0, dest, offset, sortedAlleleCountsLength);
     }
 
@@ -595,13 +578,8 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
      * @return never {@code null}.
      */
     protected static GenotypeAlleleCounts first(final int ploidy) {
-        if (ploidy < 0) {
-            throw new IllegalArgumentException("the ploidy must be 0 or greater");
-        } else if (ploidy == 0) {
-            return new GenotypeAlleleCounts(0, 0);
-        } else {
-            return new GenotypeAlleleCounts(ploidy, 0, 0, ploidy);
-        }
+        Utils.validateArg(ploidy >= 0, "the ploidy must be 0 or greater");
+        return ploidy == 0 ? new GenotypeAlleleCounts(0,0) : new GenotypeAlleleCounts(ploidy, 0, 0, ploidy);
     }
 
 
@@ -611,11 +589,7 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
      * @return -1 if there is no alleles (ploidy == 0), 0 or greater otherwise.
      */
     public int maximumAlleleIndex() {
-        if (distinctAlleleCount == 0) {
-            return -1;
-        } else {
-            return sortedAlleleCounts[(distinctAlleleCount - 1) << 1];
-        }
+        return distinctAlleleCount == 0 ? -1 : sortedAlleleCounts[(distinctAlleleCount - 1) << 1];
     }
 
     /**
@@ -623,13 +597,7 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
      *
      * @return -1 if there is no allele (ploidy == 0), 0 or greater otherwise.
      */
-    public int minimumAlleleIndex() {
-        if (distinctAlleleCount == 0) {
-            return -1;
-        } else {
-            return sortedAlleleCounts[0];
-        }
-    }
+    public int minimumAlleleIndex() { return distinctAlleleCount == 0 ? -1 : sortedAlleleCounts[0]; }
 
     /**
      * Creates an independent copy of this GenotypeAlleleCounts.
@@ -640,7 +608,8 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
     }
 
     /**
-     * Composes a list with the alleles.
+     * Composes a list with the alleles, possibly containing repeats i.e. if internally this stores
+     * allele 0 count = 1, allele 2 count = 2, the output is 0/2/2.
      *
      * @param allelesToUse alleles to use.
      *
@@ -652,26 +621,17 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
     @SuppressWarnings("unchecked")
     public <T extends Allele> List<T> asAlleleList(final List<T> allelesToUse) {
         Utils.nonNull(allelesToUse, "the input allele list cannot be null");
-        if (allelesToUse.size() < maximumAlleleIndex()) {
-            throw new IllegalArgumentException("the provided alleles to use does not contain an element for the maximum allele ");
-        }
+        Utils.validateArg(allelesToUse.size() >= maximumAlleleIndex(), "the provided alleles to use does not contain an element for the maximum allele");
         if (distinctAlleleCount == 1 ) {
-            if (ploidy == 1) {
-                return Collections.singletonList(allelesToUse.get(sortedAlleleCounts[0]));
-            } else {
-                return Collections.nCopies(ploidy, allelesToUse.get(sortedAlleleCounts[0]));
-            }
+            return Collections.nCopies(ploidy, allelesToUse.get(sortedAlleleCounts[0]));
         } else {
-            final Allele[] myAlleles = new Allele[ploidy];
-            int nextIndex = 0;
+            final List<T> result = new ArrayList<>(ploidy);
             for (int i = 0, ii = 0; i < distinctAlleleCount; i++) {
-                final Allele allele = allelesToUse.get(sortedAlleleCounts[ii++]);
+                final T allele = allelesToUse.get(sortedAlleleCounts[ii++]);
                 final int repeats = sortedAlleleCounts[ii++];
-                for (int j = 0; j < repeats; j++) {
-                    myAlleles[nextIndex++] = allele;
-                }
+                result.addAll(Collections.nCopies(repeats, allele));
             }
-            return (List<T>) Arrays.asList(myAlleles);
+            return result;
         }
     }
 

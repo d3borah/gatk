@@ -411,15 +411,18 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
     private Genotype subsetGenotypeAlleles(final Genotype g, final List<Allele> allelesToUse, final VariantContext vc, final int defaultPloidy,
                                            boolean assignGenotypes) {
         final int ploidy = g.getPloidy() <= 0 ? defaultPloidy : g.getPloidy();
-        if (!g.hasLikelihoods())
-            return GenotypeBuilder.create(g.getSampleName(),GATKVariantContextUtils.noCallAlleles(ploidy));
+        if (!g.hasLikelihoods()) {
+            return GenotypeBuilder.create(g.getSampleName(), GATKVariantContextUtils.noCallAlleles(ploidy));
+        }
         else {
             // subset likelihood alleles
             final double[] newLikelihoods = subsetLikelihoodAlleles(g, allelesToUse, vc, ploidy);
-            if (MathUtils.sum(newLikelihoods) > GATKVariantContextUtils.SUM_GL_THRESH_NOCALL)
+            if (MathUtils.sum(newLikelihoods) > GATKVariantContextUtils.SUM_GL_THRESH_NOCALL) {
                 return GenotypeBuilder.create(g.getSampleName(), GATKVariantContextUtils.noCallAlleles(ploidy));
-            else  // just now we would care about newSACs
+            }
+            else { // just now we would care about newSACs
                 return subsetGenotypeAllelesWithLikelihoods(g, allelesToUse, vc, ploidy, assignGenotypes, newLikelihoods);
+            }
         }
     }
 
@@ -472,10 +475,12 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
         final int[] newSACs = subsetSACAlleles(g, allelesToUse, vc);
         if (newSACs != null)
             gb.attribute(GATKVCFConstants.STRAND_COUNT_BY_SAMPLE_KEY, newSACs);
-        if (assignGenotypes)
+        if (assignGenotypes) {
             assignGenotype(gb, newLikelihoods, allelesToUse, ploidy);
-        else
+        }
+        else {
             gb.alleles(GATKVariantContextUtils.noCallAlleles(ploidy));
+        }
 
         return gb.make();
     }
@@ -489,8 +494,9 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
      */
     private int[] subsetSACAlleles(final Genotype g, final List<Allele> allelesToUse, final VariantContext vc){
 
-        if ( !g.hasExtendedAttribute(GATKVCFConstants.STRAND_COUNT_BY_SAMPLE_KEY) )
+        if ( !g.hasExtendedAttribute(GATKVCFConstants.STRAND_COUNT_BY_SAMPLE_KEY) ) {
             return null;
+        }
 
         // we need to determine which of the alternate alleles (and hence the likelihoods) to use and carry forward
         final int numOriginalAltAlleles = vc.getAlternateAlleles().size();

@@ -609,4 +609,24 @@ public final class UtilsUnitTest extends BaseTest {
     public void testListFromPrimitivesNoneEmpty() throws Exception {
         Assert.assertEquals(Utils.listFromPrimitives(new int[]{1,2}), Arrays.asList(1,2));
     }
+
+    @DataProvider(name = "testSplit")
+    public Object[][] testSplit(){
+        final Object[][] result = {
+                {"This is a string", " ", Arrays.asList("This", "is", "a", "string")},
+                {"This is a string", ",", Arrays.asList("This is a string")},
+                {"This is a string", "  ", Arrays.asList("This is a string")},
+
+
+                {"This,is,a,string", ",", Arrays.asList("This", "is", "a", "string")},
+                {"This,is,a,string", " ", Arrays.asList("This,is,a,string")},
+                {"This,is,a,string", ",  ", Arrays.asList("This,is,a,string")}
+        };
+        return result;
+    }
+
+    @Test(dataProvider = "testSplit")
+    public void testSplit(final String str, final String delim, final List<String> expected) {
+        Assert.assertEquals(Utils.split(str, delim),  expected);
+    }
 }

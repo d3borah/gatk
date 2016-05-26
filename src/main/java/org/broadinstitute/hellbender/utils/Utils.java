@@ -260,7 +260,9 @@ public final class Utils {
      * @param delimiter the delimiter used to split the string.
      * @return an array of tokens.
      */
-    public static ArrayList<String> split(final String str, final String delimiter) {
+    public static List<String> split(final String str, final String delimiter) {
+        Utils.nonNull(str, "the string to split cannot be null");
+        Utils.nonNull(delimiter, "the delimiter used to split the string cannot be null");
         return split(str, delimiter, 10);
     }
 
@@ -272,7 +274,12 @@ public final class Utils {
      * @param expectedNumTokens The number of tokens expected. This is used to initialize the ArrayList.
      * @return an array of tokens.
      */
-    public static ArrayList<String> split(final String str, final String delimiter, final int expectedNumTokens) {
+    private static List<String> split(final String str, final String delimiter, final int expectedNumTokens) {
+        Utils.nonNull(str, "the string to split cannot be null");
+        Utils.nonNull(delimiter, "the delimiter used to split the string cannot be null");
+        if ( expectedNumTokens <= 0 ) {
+            throw new IllegalArgumentException("the number of expected tokens must be less and or equal to zero.");
+        }
         final ArrayList<String> result =  new ArrayList<String>(expectedNumTokens);
 
         int delimiterIdx = -1;

@@ -10,14 +10,14 @@ import java.util.Arrays;
  * For example, with P=2,N=2, iterator will produce
  * [2 0 ] [1 1] [ 0 2]
  */
-public final class SumIterator {
+public final class GenotypeIterator {
     private final int ploidy;   // this is always > 0 in calling code
     private final int numAlleles;
     private int[] alleleCounts;
     private boolean hasNext;
     private int linearIndex;
 
-    public SumIterator(final int numAlleles, final int ploidy) {
+    public GenotypeIterator(final int numAlleles, final int ploidy) {
         this.ploidy = ploidy;
         this.numAlleles = numAlleles;
         alleleCounts = new int[numAlleles];

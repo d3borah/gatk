@@ -12,6 +12,7 @@ import org.broadinstitute.hellbender.utils.variant.GATKVariantContextUtils;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 /**
@@ -180,7 +181,7 @@ public class FlatPriorAFCalculator extends AFCalculator {
      * @param nAlleles                    Number of alleles
      * @param numChromosomes              Ploidy
      * @param PLindex                     Index to query
-     * @return                            Allele count conformation, according to iteration order from SumIterator
+     * @return                            Allele count conformation, according to iteration order from GenotypeIterator
      */
     private static int[] getAlleleCountFromPLIndex(final int nAlleles, final int numChromosomes, final int PLindex) {
         final GenotypeLikelihoodCalculator calculator = new GenotypeLikelihoodCalculators().getInstance(numChromosomes, nAlleles);
@@ -276,74 +277,55 @@ public class FlatPriorAFCalculator extends AFCalculator {
     }
 
     /**
-     * Given set of alleles with corresponding vector of likelihoods, subset to a new set of alleles
+     * Given set of alleles with corresponding vector of genotype likelihoods (in the canonical order)
+     * output likelihoods in the canonical order for a subset of the alleles.
      *
      * @param oldLikelihoods        Vector of PL's corresponding to original alleles
      * @param numChromosomes        Ploidy (number of chromosomes describing PL's)
      * @param originalAlleles       List of original alleles
-     * @param allelesToSubset       Alleles to subset
-     * @return                      Vector of new PL's, ordered accorrding to SumIterator's ordering
+     * @param newAlleles            Alleles to subset
+     * @return                      Vector of new PL's, ordered accorrding to GenotypeIterator's ordering
      */
     private static double[] subsetToAlleles(final double[] oldLikelihoods, final int numChromosomes,
-                                            final List<Allele> originalAlleles, final List<Allele> allelesToSubset) {
-
-        final int newPLSize = getNumLikelihoodElements(allelesToSubset.size(), numChromosomes);
+                                            final List<Allele> originalAlleles, final List<Allele> newAlleles) {
+        final int newPLSize = numGenotypes(newAlleles.size(), numChromosomes);
         final double[] newPLs = new double[newPLSize];
 
         // First fill boolean array stating whether each original allele is present in new mapping
-        final List<Boolean> allelePresent = originalAlleles.stream().map(a -> allelesToSubset.contains(a)).collect(Collectors.toList());
+        final List<Boolean> allelePresent = originalAlleles.stream().map(a -> newAlleles.contains(a)).collect(Collectors.toList());
 
         // compute mapping from old idx to new idx
         // Example. Original alleles: {T*,C,G,A}. New alleles: {G,C}. Permutation key = [2,1]
-        final int[] oldIndicesOfNewAlleles = allelesToSubset.stream().mapToInt(a -> originalAlleles.indexOf(a)).toArray();
+        final int[] oldIndicesOfNewAlleles = newAlleles.stream().mapToInt(a -> originalAlleles.indexOf(a)).toArray();
 
-        final SumIterator iterator = new SumIterator(originalAlleles.size(),numChromosomes);
-        while (iterator.hasNext()) {
-            // for each entry in logPL table, associated originally with allele count stored in vec[],
-            // see if this allele count conformation will be present in new logPL table.
-            // For entry to be present, elements in dimensions not present in requested allele list have to have count = 0
-            final int[] pVec = iterator.getCurrentVector();
-            final double pl = oldLikelihoods[iterator.getLinearIndex()];
-
-            boolean keyPresent = true;
-            for (int k=0; k < allelePresent.size(); k++) {
-                if (pVec[k] > 0 && !allelePresent.get(k)) {
-                    keyPresent = false;
-                }
+        // iterate over all genotypes containing the old alleles, and for each genotype that contains only new alleles
+        // copy its GL to the appropriate index of the new GL array
+        for (GenotypeIterator iterator = new GenotypeIterator(originalAlleles.size(),numChromosomes); iterator.hasNext(); iterator.next()) {
+            // skip this genotype if it contains any alleles not in the new allele subset
+            final int[] alleleCounts = iterator.getCurrentVector();
+            if (IntStream.range(0, originalAlleles.size()).anyMatch(k -> alleleCounts[k] > 0 && !allelePresent.get(k))) {
+                continue;
             }
 
-            if (keyPresent) {// skip to next entry in logPLs if this conformation is not present in subset
+            final int[] newAlleleCounts = IntStream.range(0, newAlleles.size())
+                    .map(newAllele -> alleleCounts[oldIndicesOfNewAlleles[newAllele]]).toArray();
 
-                final int[] newCount = new int[allelesToSubset.size()];
-
-                // map from old allele mapping count to new allele mapping
-                // In pseudo-Matlab notation: newCount = vec[oldIndicesOfNewAlleles] for oldIndicesOfNewAlleles vector
-                for (int idx = 0; idx < newCount.length; idx++) {
-                    newCount[idx] = pVec[oldIndicesOfNewAlleles[idx]];
-                }
-
-                // get corresponding index from new count
-                final int outputIdx = getLinearIndex(newCount, allelesToSubset.size(), numChromosomes);
-                newPLs[outputIdx] = pl;
-            }
-            iterator.next();
+            // get corresponding index from new count
+            final int outputIdx = getGenotypeIndex(newAlleleCounts, newAlleles.size(), numChromosomes);
+            newPLs[outputIdx] = oldLikelihoods[iterator.getLinearIndex()];
         }
 
         return  newPLs;
     }
-    /*
-* a cache of the PL vector sizes as a function of # of alleles and ploidy
-*/
+
     @VisibleForTesting
-    static int getNumLikelihoodElements(final int numAlleles, final int ploidy) {
-        return GLVECTORSIZES[numAlleles][ploidy];
-    }
+    static int numGenotypes(final int numAlleles, final int ploidy) { return GL_ARRAY_SIZES[numAlleles][ploidy]; }
 
     private static final int MAX_NUM_ALLELES_TO_CACHE = 20;
     private static final int MAX_NUM_SAMPLES_PER_POOL = 1000;
 
     //Note: this is shared state but it's not modified at runtime
-    private static final int[][] GLVECTORSIZES = fillGLVectorSizeCache(MAX_NUM_ALLELES_TO_CACHE, 2*MAX_NUM_SAMPLES_PER_POOL);
+    private static final int[][] GL_ARRAY_SIZES = fillGLVectorSizeCache(MAX_NUM_ALLELES_TO_CACHE, 2*MAX_NUM_SAMPLES_PER_POOL);
 
     private static int[][] fillGLVectorSizeCache(final int maxAlleles, final int maxPloidy) {
         final int[][] cache = new int[maxAlleles][maxPloidy];
@@ -355,27 +337,24 @@ public class FlatPriorAFCalculator extends AFCalculator {
         return cache;
     }
 
-    private static int getLinearIndex(final int[] vectorIdx, final int numAlleles, final int ploidy) {
+    // given vector of allele counts (i.e. number of copies of each allele a genotype contains)
+    // find the genotype's index in the canonical ordering.
+    // To do this total the number of genotypes that equal this one past a certain allele and have lower index below.
+    private static int getGenotypeIndex(final int[] alleleCounts, final int numAlleles, final int ploidy) {
         if (ploidy <= 0) {
             return 0;
         }
-
-        int linearIdx = 0;
-        int cumSum = ploidy;
-        for (int k = numAlleles - 1; k >= 1; k--) {
-            final int idx = vectorIdx[k];
-            // how many blocks are before current position
-            if (idx == 0) {
-                continue;
+        int numGenotypesWithLowerIndex = 0;
+        int remainingPloidy = ploidy;
+        for (int allele = numAlleles - 1; allele > 0; allele--) {
+            final int countAtThisAllele = alleleCounts[allele];
+            for (int smallerCountAtThisAllele=0; smallerCountAtThisAllele < countAtThisAllele; smallerCountAtThisAllele++) {
+                numGenotypesWithLowerIndex += numGenotypes(allele, remainingPloidy - smallerCountAtThisAllele);
             }
-            for (int p=0; p < idx; p++) {
-                linearIdx += getNumLikelihoodElements(k, cumSum - p);
-            }
-
-            cumSum -= idx;
+            remainingPloidy -= countAtThisAllele;
         }
 
-        return linearIdx;
+        return numGenotypesWithLowerIndex;
 
     }
 

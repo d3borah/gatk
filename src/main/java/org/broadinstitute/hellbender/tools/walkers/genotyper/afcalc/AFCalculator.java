@@ -27,21 +27,11 @@ public abstract class AFCalculator {
      */
     public AFCalculationResult getLog10PNonRef(final VariantContext vc, final int defaultPloidy, final int maximumAlternativeAlleles) {
         Utils.nonNull(vc, "VariantContext cannot be null");
-        if ( vc.getNAlleles() == 1 ) {
-            throw new IllegalArgumentException("VariantContext has only a single reference allele, but getLog10PNonRef requires at least one at all " + vc);
-        }
-
+        Utils.validateArg(vc.getNAlleles() > 1, "getLog10PNonRef requires at least one at alt allele");
         final VariantContext vcWorking = reduceScope(vc,defaultPloidy, maximumAlternativeAlleles);
-
         return computeLog10PNonRef(vcWorking, defaultPloidy);
     }
 
-    // ---------------------------------------------------------------------------
-    //
-    // Abstract methods that should be implemented by concrete implementations
-    // to actually calculate the AF
-    //
-    // ---------------------------------------------------------------------------
 
     /**
      * Look at VC and perhaps return a new one of reduced complexity, if that's necessary
@@ -75,8 +65,6 @@ public abstract class AFCalculator {
      * @param assignGenotypes
      * @return GenotypesContext object
      */
-    public abstract GenotypesContext subsetAlleles(final VariantContext vc,
-                                                   final int defaultPloidy,
-                                                   final List<Allele> allelesToUse,
+    public abstract GenotypesContext subsetAlleles(final VariantContext vc, final int defaultPloidy, final List<Allele> allelesToUse,
                                                    final boolean assignGenotypes);
 }

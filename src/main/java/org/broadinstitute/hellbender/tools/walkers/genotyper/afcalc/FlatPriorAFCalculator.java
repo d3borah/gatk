@@ -22,6 +22,7 @@ import java.util.stream.Stream;
  * the other implementations and their associated classes like StateTracker and ExactACSet.
  */
 public class FlatPriorAFCalculator extends AFCalculator {
+
     private static final int INDEX_OF_HOM_REF = 0;
     @Override
     protected AFCalculationResult computeLog10PNonRef(final VariantContext vc, final int defaultPloidy) {
@@ -41,8 +42,12 @@ public class FlatPriorAFCalculator extends AFCalculator {
             }
             final double[] gls = genotype.getLikelihoods().getAsVector();
             final double[] genotypePosteriors = MathUtils.normalizeFromLog10(gls, false);   // real, not log
+            //TODO: fill this in
+            //TODO: note that the subsetting mathods have code that shows how to get likelihoods by allele counts of genotypes
+            //TODO: it probably involves a GenotypeIterator
 
         }
+
 
         return new AFCalculationResult(alleleCountsOfMLE, allelesUsedInGenotyping, log10PosteriorOfAFEq0, log10pRefByAllele);
     }
@@ -76,8 +81,6 @@ public class FlatPriorAFCalculator extends AFCalculator {
         final GenotypesContext outputGenotypes = subsetAlleles(vc,defaultPloidy,outputAlleles,false);
         return new VariantContextBuilder(vc).alleles(outputAlleles).genotypes(outputGenotypes).make();
     }
-
-
 
     /**
      * Returns a the new set of alleles to use.
@@ -188,9 +191,7 @@ public class FlatPriorAFCalculator extends AFCalculator {
                 newGTs.add(gb.make());
             }
         }
-
         return newGTs;
-
     }
 
     /**
@@ -211,8 +212,7 @@ public class FlatPriorAFCalculator extends AFCalculator {
         // First fill boolean array stating whether each original allele is present in new mapping
         final List<Boolean> allelePresent = originalAlleles.stream().map(a -> newAlleles.contains(a)).collect(Collectors.toList());
 
-        // compute mapping from old idx to new idx
-        // Example. Original alleles: {T*,C,G,A}. New alleles: {G,C}. Permutation key = [2,1]
+        // compute mapping from old idx to new idx eg Original: {T*,C,G,A}, New: {G,C}. Permutation key = [2,1]
         final int[] oldIndicesOfNewAlleles = newAlleles.stream().mapToInt(a -> originalAlleles.indexOf(a)).toArray();
 
         // iterate over all genotypes containing the old alleles, and for each genotype that contains only new alleles
@@ -258,7 +258,7 @@ public class FlatPriorAFCalculator extends AFCalculator {
     // find the genotype's index in the canonical ordering.
     // To do this total the number of genotypes that equal this one past a certain allele and have lower index below.
     private static int getGenotypeIndex(final int[] alleleCounts, final int numAlleles, final int ploidy) {
-        if (ploidy <= 0) {
+        if (ploidy == 0) {
             return 0;
         }
         int numGenotypesWithLowerIndex = 0;
@@ -270,9 +270,7 @@ public class FlatPriorAFCalculator extends AFCalculator {
             }
             remainingPloidy -= countAtThisAllele;
         }
-
         return numGenotypesWithLowerIndex;
-
     }
 
 

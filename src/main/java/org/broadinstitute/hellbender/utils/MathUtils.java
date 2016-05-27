@@ -740,12 +740,9 @@ public final class MathUtils {
     }
 
     public static int maxElementIndex(final double[] array, final int start, final int endIndex) {
-        if (array == null || array.length == 0)
-            throw new IllegalArgumentException("Array cannot be null!");
-
-        if (start > endIndex) {
-            throw new IllegalArgumentException("Start cannot be after end.");
-        }
+        Utils.nonNull(array, "array cannot be null");
+        Utils.validateArg(array.length > 0, "array cannot be empty");
+        Utils.validateArg(start <= endIndex, "Start cannot be after end.");
 
         int maxI = start;
         for (int i = (start+1); i < endIndex; i++) {

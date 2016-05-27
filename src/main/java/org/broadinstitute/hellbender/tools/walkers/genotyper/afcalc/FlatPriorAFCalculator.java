@@ -72,9 +72,9 @@ public class FlatPriorAFCalculator extends AFCalculator {
                 + " has " + (vc.getAlternateAlleles().size())
                 + " alternate alleles so only the top alleles will be used; see the --max_alternate_alleles argument");
 
-        final List<Allele> alleles = Stream.concat(Stream.of(vc.getReference()), outputAltAlleles.stream()).collect(Collectors.toList());
-        final GenotypesContext genotypes = subsetAlleles(vc,defaultPloidy,alleles,false);
-        return new VariantContextBuilder(vc).alleles(alleles).genotypes(genotypes).make();
+        final List<Allele> outputAlleles = Stream.concat(Stream.of(vc.getReference()), outputAltAlleles.stream()).collect(Collectors.toList());
+        final GenotypesContext outputGenotypes = subsetAlleles(vc,defaultPloidy,outputAlleles,false);
+        return new VariantContextBuilder(vc).alleles(outputAlleles).genotypes(outputGenotypes).make();
     }
 
 
@@ -106,7 +106,7 @@ public class FlatPriorAFCalculator extends AFCalculator {
             final double GLDiffBetweenRefAndBest = gls[indexOfMostLikelyGenotype] - gls[INDEX_OF_HOM_REF];
             final int ploidy = genotype.getPloidy() > 0 ? genotype.getPloidy() : defaultPloidy;
 
-            final int[] alleleCounts = getAlleleCountFromPLIndex(vc.getNAlleles(), ploidy, indexOfMostLikelyGenotype);
+            final int[] alleleCounts = getAlleleCountsFromIndex(vc.getNAlleles(), ploidy, indexOfMostLikelyGenotype);
             for (int allele = 1; allele < alleleCounts.length; allele++) {
                 likelihoodSums[allele] += alleleCounts[allele] * GLDiffBetweenRefAndBest;
             }
@@ -126,12 +126,12 @@ public class FlatPriorAFCalculator extends AFCalculator {
      * Given a scalar index, what's the alelle count conformation corresponding to it?
      * @param nAlleles                    Number of alleles
      * @param numChromosomes              Ploidy
-     * @param PLindex                     Index to query
+     * @param index                     Index to query
      * @return                            Allele count conformation, according to iteration order from GenotypeIterator
      */
-    private static int[] getAlleleCountFromPLIndex(final int nAlleles, final int numChromosomes, final int PLindex) {
+    private static int[] getAlleleCountsFromIndex(final int nAlleles, final int numChromosomes, final int index) {
         final GenotypeLikelihoodCalculator calculator = new GenotypeLikelihoodCalculators().getInstance(numChromosomes, nAlleles);
-        final GenotypeAlleleCounts alleleCounts = calculator.genotypeAlleleCountsAt(PLindex);
+        final GenotypeAlleleCounts alleleCounts = calculator.genotypeAlleleCountsAt(index);
         return alleleCounts.alleleCountsByIndex(nAlleles - 1);
     }
 
@@ -177,9 +177,7 @@ public class FlatPriorAFCalculator extends AFCalculator {
             }
             else {
                 final GenotypeBuilder gb = new GenotypeBuilder(g);
-
-                //TODO: is it really necessary to handle numNewAltAlleles == 0 separately?
-                gb.PL(numNewAltAlleles == 0 ? null : newLikelihoods);
+                gb.PL(newLikelihoods);
 
                 // if we weren't asked to assign a genotype, then just no-call the sample
                 if ( !assignGenotypes || MathUtils.sum(newLikelihoods) > GATKVariantContextUtils.SUM_GL_THRESH_NOCALL ) {
@@ -278,6 +276,8 @@ public class FlatPriorAFCalculator extends AFCalculator {
     }
 
 
+    //TODO: first, it's kind of ugly how this is a side effect of subsetting and not its own method
+    //TODO: second, there should be a more principled way of assigning GTs that is not simply based on likelihoods
     /**
      * Assign genotypes (GTs) to the samples in the Variant Context greedily based on the PLs
      *
@@ -287,21 +287,17 @@ public class FlatPriorAFCalculator extends AFCalculator {
      */
     private static void assignGenotype(final GenotypeBuilder gb, final double[] newLikelihoods, final List<Allele> allelesToUse,
                                        final int numChromosomes) {
-        final int numNewAltAlleles = allelesToUse.size() - 1;
-
-        // find the genotype with maximum likelihoods
-        final int PLindex = numNewAltAlleles == 0 ? 0 : MathUtils.maxElementIndex(newLikelihoods);
+        final int mostLikelyGenotypeIndex = MathUtils.maxElementIndex(newLikelihoods);
         final GenotypeLikelihoodCalculator calculator = new GenotypeLikelihoodCalculators().getInstance(numChromosomes, allelesToUse.size());
-        final GenotypeAlleleCounts alleleCounts = calculator.genotypeAlleleCountsAt(PLindex);
+        final GenotypeAlleleCounts alleleCounts = calculator.genotypeAlleleCountsAt(mostLikelyGenotypeIndex);
         gb.alleles(alleleCounts.asAlleleList(allelesToUse));
 
         // remove PLs if necessary
         if (newLikelihoods.length > MAX_LENGTH_FOR_POOL_PL_LOGGING) {
             gb.noPL();
         }
-
-        if ( numNewAltAlleles > 0 ) {
-            gb.log10PError(GenotypeLikelihoods.getGQLog10FromLikelihoods(PLindex, newLikelihoods));
+        if ( allelesToUse.size() > 1 ) {
+            gb.log10PError(GenotypeLikelihoods.getGQLog10FromLikelihoods(mostLikelyGenotypeIndex, newLikelihoods));
         }
     }
 }

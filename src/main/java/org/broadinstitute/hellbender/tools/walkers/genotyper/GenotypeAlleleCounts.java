@@ -490,9 +490,7 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
      * of each allele where the position in the array is equal to its index.
      */
     public int[] alleleCountsByIndex(final int maximumAlleleIndex) {
-        if (maximumAlleleIndex < 0) {
-            throw new IllegalArgumentException("the requested allele count cannot be less than 0");
-        }
+        Utils.validateArg(maximumAlleleIndex >= 0, "the requested allele count cannot be less than 0");
         final int[] result = new int[maximumAlleleIndex + 1];
         copyAlleleCountsByIndex(result, 0, 0, maximumAlleleIndex);
         return result;

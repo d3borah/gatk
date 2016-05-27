@@ -160,7 +160,7 @@ public final class MathUtils {
     }
 
     /**
-     * Calculates {@code log(1-exp(a))} without loosing precision.
+     * Calculates {@code log(1-exp(a))} without losing precision.
      *
      * <p>
      *     This is based on the approach described in:

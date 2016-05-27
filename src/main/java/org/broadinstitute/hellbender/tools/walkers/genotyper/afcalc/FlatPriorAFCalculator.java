@@ -28,7 +28,7 @@ public class FlatPriorAFCalculator extends AFCalculator {
     protected AFCalculationResult computeLog10PNonRef(final VariantContext vc, final int defaultPloidy) {
         Utils.nonNull(vc, "vc is null");
 
-        final int[] alleleCountsOfMLE = null;
+        final int[] alleleCountsOfMLE = new int[vc.getNAlleles()];
         final List<Allele> allelesUsedInGenotyping = vc.getAlleles();
         final double log10PosteriorOfAFEq0 = -1.0;    //TODO: placeholder
         final Map<Allele, Double> log10pRefByAllele = null;
@@ -36,15 +36,15 @@ public class FlatPriorAFCalculator extends AFCalculator {
         final GenotypesContext GLs = vc.getGenotypes();
         final int numAlleles = vc.getNAlleles();
 
+        double log10PAllHomRef = 0.0;
         for (final Genotype genotype : GLs.iterateInSampleNameOrder()) {
             if (!genotype.hasPL()) {
                 continue;
             }
             final double[] gls = genotype.getLikelihoods().getAsVector();
             final double[] genotypePosteriors = MathUtils.normalizeFromLog10(gls, false);   // real, not log
-            //TODO: fill this in
-            //TODO: note that the subsetting mathods have code that shows how to get likelihoods by allele counts of genotypes
-            //TODO: it probably involves a GenotypeIterator
+            log10PAllHomRef += genotypePosteriors[0];   // log10PAllHomRef = product of individual samples being hom ref
+
 
         }
 

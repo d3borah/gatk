@@ -16,8 +16,7 @@ import java.util.*;
  * that users of this code can rely on the values coming out of these functions.
  */
 public final class AFCalculationResult {
-    //TODO: this should be log space to avoid numerical issues
-    private final double log10PosteriorOfACEq0;  //not log space
+    private final double log10PosteriorOfAllSamplesHomRef;
 
     private final Map<Allele, Double> log10pRefByAllele;
 
@@ -36,13 +35,13 @@ public final class AFCalculationResult {
      */
     public AFCalculationResult(final int[] alleleCountsOfMLE,
                                final List<Allele> allelesUsedInGenotyping,
-                               final double log10PosteriorOfACEq0,
+                               final double log10PosteriorOfAllSamplesHomRef,
                                final Map<Allele, Double> log10pRefByAllele) {
         this.alleleCountsOfMLE = Utils.nonNull(alleleCountsOfMLE, "alleleCountsOfMLE cannot be null").clone();
         this.allelesUsedInGenotyping = Collections.unmodifiableList(new ArrayList<>(allelesUsedInGenotyping));
         this.log10pRefByAllele = Collections.unmodifiableMap(new LinkedHashMap<>(log10pRefByAllele));
-        Utils.validateArg(log10PosteriorOfACEq0 < 0, "posterior must be a probability");
-        this.log10PosteriorOfACEq0 = log10PosteriorOfACEq0;
+        Utils.validateArg(MathUtils.goodLog10Probability(log10PosteriorOfAllSamplesHomRef), "posterior must be a probability");
+        this.log10PosteriorOfAllSamplesHomRef = log10PosteriorOfAllSamplesHomRef;
     }
 
     /**
@@ -72,15 +71,15 @@ public final class AFCalculationResult {
     /**
      * Get the log10 normalized -- across all ACs -- posterior probability of AC == 0 for all alleles
      */
-    public double getLog10PosteriorOfAFEq0() {
-        return log10PosteriorOfACEq0;
+    public double log10PosteriorOfAllSamplesHomRef() {
+        return log10PosteriorOfAllSamplesHomRef;
     }
 
     /**
      * Get the log10 normalized -- across all ACs -- posterior probability of AC > 0 for any alleles
      */
-    public double getLog10PosteriorOfAFGT0() {
-        return Math.log10(1- Math.pow(10,log10PosteriorOfACEq0));
+    public double getLog10PosteriorOfSomeVariantPresent() {
+        MathUtils.log10OneMinusPow10(log10PosteriorOfAllSamplesHomRef);
     }
 
     /**
@@ -143,22 +142,6 @@ public final class AFCalculationResult {
         return log10pNonRef;
     }
 
-    //TODO: I imposed flat priors
-    /**
-     * Returns the log10 normalized posteriors given the log10 likelihoods and priors
-     *
-     * @param log10LikelihoodsOfAC
-     *
-     * @return freshly allocated log10 normalized posteriors vector
-     */
-    private static double[] computePosteriors(final double[] log10LikelihoodsOfAC) {
-        final double[] log10UnnormalizedPosteriors = new double[log10LikelihoodsOfAC.length];
-        for ( int i = 0; i < log10LikelihoodsOfAC.length; i++ ) {
-            log10UnnormalizedPosteriors[i] = log10LikelihoodsOfAC[i];
-        }
-        return MathUtils.normalizeFromLog10(log10UnnormalizedPosteriors, true, false);
-    }
-
     /**
      * Computes the offset into linear vectors indexed by alt allele for allele
      *
@@ -171,9 +154,7 @@ public final class AFCalculationResult {
      * @return an index value greater than 0 suitable for indexing into the MLE and other alt allele indexed arrays
      */
     private int altAlleleIndex(final Allele allele) {
-        if ( allele.isReference() ) {
-            throw new IllegalArgumentException("Cannot get the alt allele index for reference allele " + allele);
-        }
+        Utils.validateArg(!allele.isReference(),"Cannot get the alt allele index for reference allele ");
         final int index = allelesUsedInGenotyping.indexOf(allele);
         if ( index == -1 ) {
             throw new IllegalArgumentException("could not find allele " + allele + " in " + allelesUsedInGenotyping);

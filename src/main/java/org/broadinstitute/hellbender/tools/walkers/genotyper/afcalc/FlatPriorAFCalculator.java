@@ -22,6 +22,7 @@ import java.util.stream.Stream;
  * the other implementations and their associated classes like StateTracker and ExactACSet.
  */
 public class FlatPriorAFCalculator extends AFCalculator {
+    private static final int INDEX_OF_HOM_REF = 0;
     @Override
     protected AFCalculationResult computeLog10PNonRef(final VariantContext vc, final int defaultPloidy) {
         Utils.nonNull(vc, "vc is null");
@@ -45,40 +46,6 @@ public class FlatPriorAFCalculator extends AFCalculator {
 
         return new AFCalculationResult(alleleCountsOfMLE, allelesUsedInGenotyping, log10PosteriorOfAFEq0, log10pRefByAllele);
     }
-
-
-    /**
-     * A WHOLE BUNCH OF CODE COPIED FROM ExactAFCalculator and GeneralPloidyExactAFCalculator to implement reduceScope()
-     *
-     * I copied for the sake of expedience since this logic is seprate from the exact model.  I'm sure that I will want to destroy this.
-     */
-
-    protected static final int PL_INDEX_OF_HOM_REF = 0;
-
-    /**
-     * Sorts {@link LikelihoodSum} instances where those with higher likelihood are first.
-     */
-    protected static final Comparator<LikelihoodSum> LIKELIHOOD_SUM_COMPARATOR = Comparator.<LikelihoodSum>comparingDouble(o->o.sum).reversed();
-
-    /**
-     * Sorts {@link LikelihoodSum} instances where those with higher likelihood are first but make sure that
-     * NON_REF alleles are last.
-     */
-    protected static final Comparator<LikelihoodSum> LIKELIHOOD_NON_REF_THEN_SUM_COMPARATOR = (o1, o2) -> {
-        if (o1.allele == GATKVCFConstants.NON_REF_SYMBOLIC_ALLELE) {
-            return 1;
-        } else if (o2.allele == GATKVCFConstants.NON_REF_SYMBOLIC_ALLELE) {
-            return -1;
-        } else {
-            return o1.compareTo(o2);
-        }
-    };
-    /**
-     * Sorts {@link LikelihoodSum} instances where those with lower alternative allele index are first regardless of
-     * the likelihood sum.
-     */
-    protected static final Comparator<LikelihoodSum> LIKELIHOOD_INDEX_COMPARATOR = Comparator.comparingInt(o->o.index);
-
 
 
     /**
@@ -116,64 +83,43 @@ public class FlatPriorAFCalculator extends AFCalculator {
      * Returns a the new set of alleles to use.
      * @param vc target variant context.
      * @param numAllelesToChoose number of alleles to keep.
-     * @return the list of alternative allele to keep.
+     * @return the list of alternative alleles to keep.
      */
     protected List<Allele> reduceScopeAlleles(final VariantContext vc, final int defaultPloidy, final int numAllelesToChoose) {
         Utils.nonNull(vc, "vc is null");
-
-        final int numOriginalAltAlleles = vc.getAlternateAlleles().size();
-
-        final int nonRefAltAlleleIndex = GATKVariantContextUtils.indexOfAltAllele(vc, GATKVCFConstants.NON_REF_SYMBOLIC_ALLELE, false);
-        final boolean nonRefAltAllelePresent = nonRefAltAlleleIndex >= 0;
-
-        // <NON_REF> should not be considered in the downsizing
-        final int numProperOriginalAltAlleles = numOriginalAltAlleles - (nonRefAltAllelePresent ? 1 : 0);
+        final int nonRefAltAllele = GATKVariantContextUtils.indexOfAltAllele(vc, GATKVCFConstants.NON_REF_SYMBOLIC_ALLELE, false);
+        final int[] properAltAlleles = IntStream.range(1, vc.getNAlleles()).filter(n -> n != nonRefAltAllele).toArray();
 
         // Avoid pointless allele reduction:
-        if (numAllelesToChoose >= numProperOriginalAltAlleles) {
+        if (numAllelesToChoose >= properAltAlleles.length) {
             return vc.getAlternateAlleles();
         }
 
-        final double[] likelihoodSums = new double[numOriginalAltAlleles + 1]; //likelihood sums for all alleles including ref
+        final double[] likelihoodSums = new double[vc.getNAlleles()];
         for ( final Genotype genotype : vc.getGenotypes().iterateInSampleNameOrder() ) {
             final double[] gls = genotype.getLikelihoods().getAsVector();
             if (gls == null || GATKVariantContextUtils.likelihoodsAreUninformative(gls)) {
                 continue;
             }
 
-            final int indexOfBestGL = MathUtils.maxElementIndex(gls);
-
-            final double GLDiffBetweenRefAndBest = gls[indexOfBestGL] - gls[PL_INDEX_OF_HOM_REF];
+            final int indexOfMostLikelyGenotype = MathUtils.maxElementIndex(gls);
+            final double GLDiffBetweenRefAndBest = gls[indexOfMostLikelyGenotype] - gls[INDEX_OF_HOM_REF];
             final int ploidy = genotype.getPloidy() > 0 ? genotype.getPloidy() : defaultPloidy;
 
-            final int[] acCount = getAlleleCountFromPLIndex(1 + numOriginalAltAlleles, ploidy, indexOfBestGL);
-            // by convention, first count coming from getAlleleCountFromPLIndex comes from reference allele
-            for (int k=1; k < acCount.length; k++) {
-                if (acCount[k] > 0) {
-                    likelihoodSums[k] += acCount[k] * GLDiffBetweenRefAndBest;
-                }
+            final int[] alleleCounts = getAlleleCountFromPLIndex(vc.getNAlleles(), ploidy, indexOfMostLikelyGenotype);
+            for (int allele = 1; allele < alleleCounts.length; allele++) {
+                likelihoodSums[allele] += alleleCounts[allele] * GLDiffBetweenRefAndBest;
             }
         }
-        Collections.sort(likelihoodSums, nonRefAltAllelePresent ? LIKELIHOOD_NON_REF_THEN_SUM_COMPARATOR : LIKELIHOOD_SUM_COMPARATOR);
 
-        // Keep track of original index order of likelihoods via a heap
-        final PriorityQueue<LikelihoodSum> mostLikelyAllelesHeapByIndex = new PriorityQueue<>(numOriginalAltAlleles, LIKELIHOOD_INDEX_COMPARATOR);
-        mostLikelyAllelesHeapByIndex.addAll(likelihoodSums.subList(0, numAllelesToChoose));
-
-
-        // guaranteed no to have been added at this point thanks for checking on whether reduction was
-        // needed in the first place.
-        if (nonRefAltAllelePresent) {
-            mostLikelyAllelesHeapByIndex.add(likelihoodSums.get(nonRefAltAlleleIndex));
-        }
-
-        final List<Allele> orderedBestAlleles = new ArrayList<>(numAllelesToChoose);
-
-        while (!mostLikelyAllelesHeapByIndex.isEmpty()) {
-            orderedBestAlleles.add(mostLikelyAllelesHeapByIndex.remove().allele);
-        }
-
-        return orderedBestAlleles;
+        final List<Double> properAltAlleleLikelihoodSums = Arrays.stream(properAltAlleles)
+                .mapToObj(n -> likelihoodSums[n]).collect(Collectors.toList());
+        Collections.sort(properAltAlleleLikelihoodSums, Collections.reverseOrder());
+        final double likelihoodSumThreshold = properAltAlleleLikelihoodSums.get(numAllelesToChoose);
+        return IntStream.range(1, vc.getNAlleles())
+                .filter(n -> n == nonRefAltAllele || likelihoodSums[n] > likelihoodSumThreshold)
+                .map(n -> n-1)  //go from allele index to alt allele index
+                .mapToObj(vc::getAlternateAllele).collect(Collectors.toList());
     }
 
     /**
@@ -188,33 +134,6 @@ public class FlatPriorAFCalculator extends AFCalculator {
         final GenotypeAlleleCounts alleleCounts = calculator.genotypeAlleleCountsAt(PLindex);
         return alleleCounts.alleleCountsByIndex(nAlleles - 1);
     }
-
-    /**
-     * Wrapper class that compares two likelihoods associated with two alleles
-     */
-    protected static final class LikelihoodSum implements Comparable<LikelihoodSum> {
-        public double sum = 0.0;
-        public final Allele allele;
-        public final int index;
-
-        public LikelihoodSum(final Allele allele, final int index) { this.allele = allele; this.index = index; }
-
-        public int compareTo(final LikelihoodSum other) {
-            final double diff = Double.compare(sum, other.sum);
-            return ( diff < 0.0 ) ? 1 : (diff > 0.0 ) ? -1 : 0;
-        }
-    }
-
-    /**
-     * END OF A WHOLE BUNCH OF CODE COPIED FROM ExactAFCalculator and GeneralPloidyExactAFCalculator to implement reduceScope()
-     *
-     */
-
-    /**
-     * A WHOLE BUNCH OF CODE COPIED FROM ExactAFCalculator and GeneralPloidyExactAFCalculator to implement subsetAlleles()
-     *
-     */
-
 
     static final int MAX_LENGTH_FOR_POOL_PL_LOGGING = 100; // if PL vectors longer than this # of elements, don't log them
     /**
@@ -385,9 +304,4 @@ public class FlatPriorAFCalculator extends AFCalculator {
             gb.log10PError(GenotypeLikelihoods.getGQLog10FromLikelihoods(PLindex, newLikelihoods));
         }
     }
-
-    /**
-     * END OF A WHOLE BUNCH OF CODE COPIED FROM ExactAFCalculator and GeneralPloidyExactAFCalculator to implement subsetAlleles()
-     *
-     */
 }

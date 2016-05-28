@@ -27,13 +27,13 @@ public final class GATKVariantContextUtilsUnitTest extends BaseTest {
     Allele ATref;
     Allele Anoref;
     Allele GT;
-    List<Allele> AA = new ArrayList<>();
-    List<Allele> AC = new ArrayList<>();
-    List<Allele> CC = new ArrayList<>();
-    List<Allele> AG = new ArrayList<>();
-    List<Allele> CG = new ArrayList<>();
-    List<Allele> GG = new ArrayList<>();
-    List<Allele> ACG = new ArrayList<>();
+    final List<Allele> AA = new ArrayList<>();
+    final List<Allele> AC = new ArrayList<>();
+    final List<Allele> CC = new ArrayList<>();
+    final List<Allele> AG = new ArrayList<>();
+    final List<Allele> CG = new ArrayList<>();
+    final List<Allele> GG = new ArrayList<>();
+    final List<Allele> ACG = new ArrayList<>();
 
 
     @BeforeSuite
@@ -1154,9 +1154,6 @@ public final class GATKVariantContextUtilsUnitTest extends BaseTest {
     public Object[][] makesubsetDiploidAllelesData() {
         List<Object[]> tests = new ArrayList<>();
 
-        final Allele C = Allele.create("C");
-        final Allele G = Allele.create("G");
-
         final VariantContext vcBase = new VariantContextBuilder("test", "20", 10, 10, AC).make();
 
         final double[] homRefPL = MathUtils.normalizeFromRealSpace(new double[]{0.9, 0.09, 0.01});
@@ -1298,15 +1295,14 @@ public final class GATKVariantContextUtilsUnitTest extends BaseTest {
 
         for ( final List<Allele> alleles : Arrays.asList(Arrays.asList(Aref), Arrays.asList(C), Arrays.asList(Aref, C), Arrays.asList(Aref, C, C) ) ) {
             for ( final String name : Arrays.asList("test1", "test2") ) {
-                final GenotypeBuilder builder = new GenotypeBuilder(name, alleles);
-                builder.DP(10);
-                builder.GQ(30);
+                final GenotypeBuilder builder = new GenotypeBuilder(name, alleles).DP(10).GQ(30);
                 builder.AD(alleles.size() == 1 ? new int[]{1} : (alleles.size() == 2 ? new int[]{1, 2} : new int[]{1, 2, 3}));
                 builder.PL(alleles.size() == 1 ? new int[]{1} : (alleles.size() == 2 ? new int[]{1, 2} : new int[]{1, 2, 3}));
                 builder.attribute(GATKVCFConstants.STRAND_COUNT_BY_SAMPLE_KEY,
                         alleles.size() == 1 ? new int[]{1, 2}  : (alleles.size() == 2 ? new int[]{1, 2, 3, 4} : new int[]{1, 2, 3, 4, 5, 6}));
                 final List<Allele> refs = Collections.nCopies(alleles.size(), Aref);
-                tests.put(builder.make(), builder.alleles(refs).noAD().noPL().attribute(GATKVCFConstants.STRAND_COUNT_BY_SAMPLE_KEY, null).make());
+                final GenotypeBuilder builderExpected = new GenotypeBuilder(name, refs).DP(10).GQ(30).attribute(GATKVCFConstants.STRAND_COUNT_BY_SAMPLE_KEY, null);
+                tests.put(builder.make(), builderExpected.make());
             }
         }
 

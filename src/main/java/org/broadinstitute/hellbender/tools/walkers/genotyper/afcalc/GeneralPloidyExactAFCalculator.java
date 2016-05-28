@@ -396,7 +396,7 @@ public final class GeneralPloidyExactAFCalculator extends ExactAFCalculator {
         for (final Genotype g : vc.getGenotypes()) // If it really needs to process order by sample name do so.
             result.add(subsetGenotypeAlleles(g, allelesToUse, vc, defaultPloidy, assignGenotypes));
 
-        return GATKVariantContextUtils.fixADFromSubsettedAlleles(result, vc, allelesToUse);
+        return GATKVariantContextUtils.subsetGenotypesContextAD(result, vc, allelesToUse);
     }
 
     /**

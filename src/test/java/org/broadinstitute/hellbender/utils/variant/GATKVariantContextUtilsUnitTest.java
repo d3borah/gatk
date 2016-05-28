@@ -27,6 +27,13 @@ public final class GATKVariantContextUtilsUnitTest extends BaseTest {
     Allele ATref;
     Allele Anoref;
     Allele GT;
+    List<Allele> AA = new ArrayList<>();
+    List<Allele> AC = new ArrayList<>();
+    List<Allele> CC = new ArrayList<>();
+    List<Allele> AG = new ArrayList<>();
+    List<Allele> CG = new ArrayList<>();
+    List<Allele> GG = new ArrayList<>();
+    List<Allele> ACG = new ArrayList<>();
 
 
     @BeforeSuite
@@ -42,7 +49,15 @@ public final class GATKVariantContextUtilsUnitTest extends BaseTest {
         ATCATCT = Allele.create("ATCATCT");
         ATref = Allele.create("AT",true);
         Anoref = Allele.create("A",false);
-        GT = Allele.create("GT",false);
+        GT = Allele.create("GT");
+
+        AA.addAll(Arrays.asList(Aref,Aref));
+        AC.addAll(Arrays.asList(Aref,C));
+        CC.addAll(Arrays.asList(C,C));
+        AG.addAll(Arrays.asList(Aref,G));
+        CG.addAll(Arrays.asList(C,G));
+        GG.addAll(Arrays.asList(G,G));
+        ACG.addAll(Arrays.asList(Aref,C,G));
     }
 
     private Genotype makeG(String sample, Allele a1, Allele a2, double log10pError, int... pls) {
@@ -1139,16 +1154,8 @@ public final class GATKVariantContextUtilsUnitTest extends BaseTest {
     public Object[][] makesubsetDiploidAllelesData() {
         List<Object[]> tests = new ArrayList<>();
 
-        final Allele A = Allele.create("A", true);
         final Allele C = Allele.create("C");
         final Allele G = Allele.create("G");
-
-        final List<Allele> AA = Arrays.asList(A,A);
-        final List<Allele> AC = Arrays.asList(A,C);
-        final List<Allele> CC = Arrays.asList(C,C);
-        final List<Allele> AG = Arrays.asList(A,G);
-        final List<Allele> GG = Arrays.asList(G,G);
-        final List<Allele> ACG = Arrays.asList(A,C,G);
 
         final VariantContext vcBase = new VariantContextBuilder("test", "20", 10, 10, AC).make();
 
@@ -1230,17 +1237,6 @@ public final class GATKVariantContextUtilsUnitTest extends BaseTest {
     public Object[][] makeUpdateGenotypeAfterSubsettingData() {
         List<Object[]> tests = new ArrayList<>();
 
-        final Allele A = Allele.create("A", true);
-        final Allele C = Allele.create("C");
-        final Allele G = Allele.create("G");
-
-        final List<Allele> AA = Arrays.asList(A,A);
-        final List<Allele> AC = Arrays.asList(A,C);
-        final List<Allele> CC = Arrays.asList(C,C);
-        final List<Allele> AG = Arrays.asList(A,G);
-        final List<Allele> CG = Arrays.asList(C,G);
-        final List<Allele> GG = Arrays.asList(G,G);
-        final List<Allele> ACG = Arrays.asList(A,C,G);
         final List<List<Allele>> allSubsetAlleles = Arrays.asList(AC,AG,ACG);
 
         final double[] homRefPL = new double[]{0.9, 0.09, 0.01};
@@ -1337,16 +1333,6 @@ public final class GATKVariantContextUtilsUnitTest extends BaseTest {
     public Object[][] makeUpdatePLsSACsAndADData() {
         List<Object[]> tests = new ArrayList<>();
 
-        final Allele A = Allele.create("A", true);
-        final Allele C = Allele.create("C");
-        final Allele G = Allele.create("G");
-
-        final List<Allele> AA = Arrays.asList(A,A);
-        final List<Allele> AC = Arrays.asList(A,C);
-        final List<Allele> CC = Arrays.asList(C,C);
-        final List<Allele> AG = Arrays.asList(A,G);
-        final List<Allele> ACG = Arrays.asList(A,C,G);
-
         final VariantContext vcBase = new VariantContextBuilder("test", "20", 10, 10, AC).make();
 
         final double[] homRefPL = MathUtils.normalizeFromRealSpace(new double[]{0.9, 0.09, 0.01});
@@ -1383,8 +1369,8 @@ public final class GATKVariantContextUtilsUnitTest extends BaseTest {
         final int[] hetRefC3AllelesAD = new int[]{10, 10, 1};
         final int[] homC3AllelesAD = new int[]{0, 20, 1};
         final int[] hetRefG3AllelesAD = new int[]{10, 0, 11};
-        final int[] hetCG3AllelesAD = new int[]{0, 12, 11}; // AA, AC, CC, AG, CG, GG
-        final int[] homG3AllelesAD = new int[]{0, 1, 21};  // AA, AC, CC, AG, CG, GG
+        final int[] hetCG3AllelesAD = new int[]{0, 12, 11};
+        final int[] homG3AllelesAD = new int[]{0, 1, 21};
 
         final int[] homRef3AllelesSAC = new int[]{20, 19, 0, 1, 3, 4};
         final int[] hetRefC3AllelesSAC = new int[]{10, 9, 10, 9, 1, 1};
@@ -1448,12 +1434,40 @@ public final class GATKVariantContextUtilsUnitTest extends BaseTest {
         }
     }
 
+
+    // --------------------------------------------------------------------------------
+    //
+    // Test subsetGenotypesContextAD
+    //
+    // --------------------------------------------------------------------------------
+
+    @DataProvider(name = "subsetGenotypesContextAD")
+    public Object[][] makeSubsetGenotypesContextADData() {
+        List<Object[]> tests = new ArrayList<>();
+
+        tests.add(new Object[]{ACG, AC, new int[]{1, 2, 3}, new int[]{1, 2}});
+        tests.add(new Object[]{ACG, AG, new int[]{1, 2, 3}, new int[]{1, 3}});
+        tests.add(new Object[]{ACG, AA, new int[]{1, 2, 3}, new int[]{1}});
+
+        return tests.toArray(new Object[][]{});
+    }
+
+    @Test(dataProvider = "subsetGenotypesContextAD")
+    public void testSubsetGenotypesContextAD(final List<Allele> alleles, final List<Allele> allelesToUse, final int[] originalAD, final int[] expectedAD ) {
+        final Genotype base = new GenotypeBuilder("Sample").make();
+        final VariantContext vc = new VariantContextBuilder("test", "20", 10, 10, alleles).genotypes(new GenotypeBuilder(base).alleles(AA).make()).make();
+        final GenotypesContext gc = GenotypesContext.create(new GenotypeBuilder(base).alleles(AA).AD(originalAD).make());
+        final GenotypesContext actualGC = GATKVariantContextUtils.subsetGenotypesContextAD(gc, vc, allelesToUse);
+        final Genotype actual = actualGC.get(0);
+        final Genotype expected = GenotypesContext.create(new GenotypeBuilder(base).alleles(AA).AD(expectedAD).make()).get(0);
+        assertGenotypesAreEqual(actual, expected);
+    }
+
     // --------------------------------------------------------------------------------
     //
     // Test methods for merging reference confidence VCs
     //
     // --------------------------------------------------------------------------------
-
 
     @Test(dataProvider = "indexOfAlleleData")
     public void testIndexOfAllele(final Allele reference, final List<Allele> altAlleles, final List<Allele> otherAlleles) {

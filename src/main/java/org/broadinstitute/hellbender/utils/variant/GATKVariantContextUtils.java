@@ -241,7 +241,7 @@ public final class GATKVariantContextUtils {
             newGTs.add(gb.make());
         }
 
-        return fixADFromSubsettedAlleles(newGTs, originalVC, allelesToUse);
+        return subsetGenotypesContextAD(newGTs, originalVC, allelesToUse);
     }
 
     /**
@@ -493,7 +493,7 @@ public final class GATKVariantContextUtils {
             if (repetitionCount[0] == 0 || repetitionCount[1] == 0)
                 return null;
 
-            if (lengths.size() == 0) {
+            if (lengths.isEmpty()) {
                 lengths.add(repetitionCount[0]); // add ref allele length only once
             }
             lengths.add(repetitionCount[1]);  // add this alt allele's length
@@ -815,7 +815,7 @@ public final class GATKVariantContextUtils {
                                              final String setKey,
                                              final boolean filteredAreUncalled,
                                              final boolean mergeInfoWithMaxAC ) {
-        if ( unsortedVCs == null || unsortedVCs.size() == 0 )
+        if ( unsortedVCs == null || unsortedVCs.isEmpty() )
             return null;
 
         if (priorityListOfVCs != null && originalNumOfVCs != priorityListOfVCs.size())
@@ -1107,14 +1107,14 @@ public final class GATKVariantContextUtils {
     }
 
     /**
-     * Fix the AD for the GenotypesContext of a VariantContext that has been subset
+     * Subset the GenotypesContext's Allele Depth (AD) with the used alleles
      *
      * @param originalGs       the original GenotypesContext
      * @param originalVC       the original VariantContext
      * @param allelesToUse     the new (sub)set of alleles to use
-     * @return a new non-null GenotypesContext
+     * @return a new non-null GenotypesContext with AD for only used alleles
      */
-    public static GenotypesContext fixADFromSubsettedAlleles(final GenotypesContext originalGs, final VariantContext originalVC, final List<Allele> allelesToUse) {
+    public static GenotypesContext subsetGenotypesContextAD(final GenotypesContext originalGs, final VariantContext originalVC, final List<Allele> allelesToUse) {
 
         Utils.nonNull(originalGs, "GenotypesContext is null");
         Utils.nonNull(originalVC, "VariantContext is null");
@@ -1132,20 +1132,20 @@ public final class GATKVariantContextUtils {
         // create the new genotypes
         for ( int k = 0; k < originalGs.size(); k++ ) {
             final Genotype g = originalGs.get(sampleIndices.get(k));
-            newGTs.add(fixAD(g, alleleIndexesToUse));
+            newGTs.add(subsetGenotypeAD(g, alleleIndexesToUse));
         }
 
         return newGTs;
     }
 
     /**
-     * Fix the AD for the given Genotype
+     * Subset the Genotype's Allele Depth (AD) with the used alleles
      *
      * @param genotype              the original Genotype
      * @param alleleIndexesToUse    a bitset describing whether or not to keep a given index
      * @return a non-null Genotype
      */
-    private static Genotype fixAD(final Genotype genotype, final BitSet alleleIndexesToUse) {
+    private static Genotype subsetGenotypeAD(final Genotype genotype, final BitSet alleleIndexesToUse) {
         // if it ain't broke don't fix it
         if ( !genotype.hasAD() )
             return genotype;

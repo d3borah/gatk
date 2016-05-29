@@ -36,14 +36,15 @@ public class FlatPriorAFCalculator extends AFCalculator {
         final GenotypesContext GLs = vc.getGenotypes();
         final int numAlleles = vc.getNAlleles();
 
-        double log10PAllHomRef = 0.0;
+        double log10ProbAllHomRef = 0.0;
+        double[] log10ProbAlleleAbsent = new double[vc.getNAlleles()];
         for (final Genotype genotype : GLs.iterateInSampleNameOrder()) {
             if (!genotype.hasPL()) {
                 continue;
             }
             final double[] gls = genotype.getLikelihoods().getAsVector();
             final double[] genotypePosteriors = MathUtils.normalizeFromLog10(gls, false);   // real, not log
-            log10PAllHomRef += genotypePosteriors[0];   // log10PAllHomRef = product of individual samples being hom ref
+            log10ProbAllHomRef += genotypePosteriors[0];   // log10PAllHomRef = product of individual samples being hom ref
 
 
         }

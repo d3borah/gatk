@@ -54,16 +54,25 @@ public final class DeduplicateFASTQFiles extends GATKSparkTool {
         final int sz = contents.length;
         for(int i=0; i<sz; i+=4){
             if(!uniqueTemplateNames.contains(contents[i])){
+
                 dedupedContentsBuilder.append(contents[i]);
+                dedupedContentsBuilder.append("\n");
+
                 dedupedContentsBuilder.append(contents[i+1]);
+                dedupedContentsBuilder.append("\n");
+
                 dedupedContentsBuilder.append(contents[i+2]);
+                dedupedContentsBuilder.append("\n");
+
                 dedupedContentsBuilder.append(contents[i+3]);
+                dedupedContentsBuilder.append("\n");
+
                 uniqueTemplateNames.add(contents[i]);
             }
         }
 
         final String originalSpace = duplicatedFASTQContents._1();
-        final String targetSpace = originalSpace.replace(".sav", ".sav.dedup");
+        final String targetSpace = originalSpace + "_dedup";
 
         return new Tuple2<>(targetSpace, dedupedContentsBuilder.toString());
     }

@@ -5,10 +5,12 @@ import com.google.api.services.genomics.model.Read;
 import com.esotericsoftware.kryo.serializers.FieldSerializer;
 import de.javakaffee.kryoserializers.UnmodifiableCollectionsSerializer;
 import htsjdk.samtools.SAMRecord;
+import htsjdk.samtools.util.Histogram;
 import org.apache.spark.serializer.KryoRegistrator;
 import org.bdgenomics.adam.serialization.ADAMKryoRegistrator;
 import org.broadinstitute.hellbender.utils.read.SAMRecordToGATKReadAdapter;
 import org.broadinstitute.hellbender.utils.read.markduplicates.PairedEnds;
+import org.broadinstitute.hellbender.metrics.HistogramSerializer;
 
 import java.util.Collections;
 
@@ -43,8 +45,12 @@ public class GATKRegistrator implements KryoRegistrator {
 
         kryo.register(SAMRecord.class, new SAMRecordSerializer());
 
-	//register to avoid writing the full name of this class over and over
-	kryo.register(PairedEnds.class, new FieldSerializer<>(kryo, PairedEnds.class));
+        // work around kryo bug classe derived from TreeMap (like htsjdk Histogram) are deserialized
+        // and rehydrated as TreeMap instances rather than instances of the derived class
+        kryo.register(Histogram.class, new HistogramSerializer());
+
+        //register to avoid writing the full name of this class over and over
+        kryo.register(PairedEnds.class, new FieldSerializer<>(kryo, PairedEnds.class));
 	
         // register the ADAM data types using Avro serialization, including:
         //     AlignmentRecord

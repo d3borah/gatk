@@ -46,8 +46,8 @@ public final class CollectMultipleMetrics extends PicardCommandLineProgram {
             @Override
             public SinglePassSamProgram makeInstance(final String outbase) {
                 final CollectInsertSizeMetrics program = new CollectInsertSizeMetrics();
-                program.OUTPUT = new File(outbase + ".insert_size_metrics");
-                program.HISTOGRAM_FILE = new File(outbase + ".insert_size_histogram.pdf");
+                program.inputArgs.output = new File(outbase + ".insert_size_metrics");
+                program.inputArgs.histogramPlotFile = new File(outbase + ".insert_size_histogram.pdf");
                 return program;
             }
         },

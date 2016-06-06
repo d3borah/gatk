@@ -3,16 +3,16 @@ package org.broadinstitute.hellbender.tools.picard.analysis;
 import htsjdk.samtools.SAMFileHeader;
 import htsjdk.samtools.SAMRecord;
 import htsjdk.samtools.metrics.MetricsFile;
+//import org.broadinstitute.hellbender.metrics.MetricsFile;
 import htsjdk.samtools.reference.ReferenceSequence;
 import htsjdk.samtools.util.IOUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.broadinstitute.hellbender.cmdline.Argument;
+import org.broadinstitute.hellbender.cmdline.ArgumentCollection;
 import org.broadinstitute.hellbender.cmdline.CommandLineProgramProperties;
 import org.broadinstitute.hellbender.cmdline.programgroups.QCProgramGroup;
-import org.broadinstitute.hellbender.metrics.InsertSizeMetrics;
-import org.broadinstitute.hellbender.metrics.InsertSizeMetricsCollector;
-import org.broadinstitute.hellbender.metrics.MetricAccumulationLevel;
+import org.broadinstitute.hellbender.metrics.*;
 import org.broadinstitute.hellbender.utils.R.RScriptExecutor;
 import org.broadinstitute.hellbender.utils.io.Resource;
 
@@ -38,30 +38,11 @@ public final class CollectInsertSizeMetrics extends SinglePassSamProgram {
 
     private static final String R_SCRIPT = "insertSizeHistogram.R";
 
-    @Argument(shortName="H", doc="File to write insert size Histogram chart to.")
-    public File HISTOGRAM_FILE;
-
-    @Argument(doc="Generate mean, sd and plots by trimming the data down to MEDIAN + DEVIATIONS*MEDIAN_ABSOLUTE_DEVIATION. " +
-            "This is done because insert size data typically includes enough anomalous values from chimeras and other " +
-            "artifacts to make the mean and sd grossly misleading regarding the real distribution.")
-    public double DEVIATIONS = 10;
-
-    @Argument(shortName="W", doc="Explicitly sets the Histogram width, overriding automatic truncation of Histogram tail. " +
-            "Also, when calculating mean and standard deviation, only bins <= HISTOGRAM_WIDTH will be included.", optional=true)
-    public Integer HISTOGRAM_WIDTH = null;
-
-    @Argument(shortName="M", doc="When generating the Histogram, discard any data categories (out of FR, TANDEM, RF) that have fewer than this " +
-            "percentage of overall reads. (Range: 0 to 1).")
-    public float MINIMUM_PCT = 0.05f;
-
-    @Argument(shortName="LEVEL", doc="The level(s) at which to accumulate metrics.  ")
-    public Set<MetricAccumulationLevel> METRIC_ACCUMULATION_LEVEL = EnumSet.of(MetricAccumulationLevel.ALL_READS);
-
-    @Argument(doc = "Should an output plot be created")
-    public boolean PRODUCE_PLOT = false;
+    @ArgumentCollection
+    public InsertSizeMetricsArgs inputArgs = new InsertSizeMetricsArgs();
 
     // Calculates InsertSizeMetrics for all METRIC_ACCUMULATION_LEVELs provided
-    private InsertSizeMetricsCollector multiCollector;
+    private InsertSizeMetricsCollectorTemp multiCollector;
 
     /**
      * Put any custom command-line validation in an override of this method.
@@ -73,8 +54,9 @@ public final class CollectInsertSizeMetrics extends SinglePassSamProgram {
      */
     @Override
     protected String[] customCommandLineValidation() {
-         if (MINIMUM_PCT < 0 || MINIMUM_PCT > 0.5) {
-             return new String[]{"MINIMUM_PCT was set to " + MINIMUM_PCT + ". It must be between 0 and 0.5 so all data categories don't get discarded."};
+         if (inputArgs.minimumPct < 0 || inputArgs.minimumPct > 0.5) {
+             return new String[]{"MINIMUM_PCT was set to " + inputArgs.minimumPct +
+                     ". It must be between 0 and 0.5 so all data categories don't get discarded."};
          }
 
          return super.customCommandLineValidation();
@@ -85,11 +67,13 @@ public final class CollectInsertSizeMetrics extends SinglePassSamProgram {
 
     @Override
     protected void setup(final SAMFileHeader header, final File samFile) {
-        IOUtil.assertFileIsWritable(OUTPUT);
-        IOUtil.assertFileIsWritable(HISTOGRAM_FILE);
+        IOUtil.assertFileIsWritable(inputArgs.output);
+        IOUtil.assertFileIsWritable(inputArgs.histogramPlotFile);
 
         //Delegate actual collection to InsertSizeMetricCollector
-        multiCollector = new InsertSizeMetricsCollector(METRIC_ACCUMULATION_LEVEL, header.getReadGroups(), MINIMUM_PCT, HISTOGRAM_WIDTH, DEVIATIONS);
+        multiCollector = new InsertSizeMetricsCollectorTemp(
+                inputArgs,
+                header.getReadGroups());
     }
 
     @Override
@@ -101,24 +85,26 @@ public final class CollectInsertSizeMetrics extends SinglePassSamProgram {
     protected void finish() {
         multiCollector.finish();
 
-        final MetricsFile<InsertSizeMetrics, Integer> file = getMetricsFile();
+        //TODO hack
+//        final MetricsFile<InsertSizeMetrics, Integer> file = getMetricsFile();
+        //TODO hack
+        final MetricsFile<InsertSizeMetrics, Integer> file = new MetricsFile<InsertSizeMetrics, Integer>();
         multiCollector.addAllLevelsToFile(file);
 
         if(file.getNumHistograms() == 0) {
             //can happen if user sets MINIMUM_PCT = 0.5, etc.
-            log.warn("All data categories were discarded because they contained < " + MINIMUM_PCT +
+            log.warn("All data categories were discarded because they contained < " + inputArgs.minimumPct +
                      " of the total aligned paired data.");
-            final InsertSizeMetricsCollector.PerUnitInsertSizeMetricsCollector allReadsCollector
-                    = (InsertSizeMetricsCollector.PerUnitInsertSizeMetricsCollector) multiCollector.getAllReadsCollector();
+            final PerUnitInsertSizeMetricsCollector allReadsCollector = multiCollector.getAllReadsCollector();
             log.warn("Total mapped pairs in all categories: " + (allReadsCollector == null ? allReadsCollector : allReadsCollector.getTotalInserts()));
         }
         else  {
-            file.write(OUTPUT);
-            if(PRODUCE_PLOT){
+            file.write(inputArgs.output);
+            if (inputArgs.producePlot){
                 final RScriptExecutor executor = new RScriptExecutor();
                 executor.addScript(new Resource(R_SCRIPT, CollectInsertSizeMetrics.class));
-                executor.addArgs(OUTPUT.getAbsolutePath(), HISTOGRAM_FILE.getAbsolutePath(), INPUT.getName());
-                if (HISTOGRAM_WIDTH != null) executor.addArgs(String.valueOf(HISTOGRAM_WIDTH));
+                executor.addArgs(inputArgs.output.getAbsolutePath(), inputArgs.histogramPlotFile.getAbsolutePath(), INPUT.getName());
+                if (inputArgs.histogramWidth != null) executor.addArgs(String.valueOf(inputArgs.histogramWidth));
                 executor.exec();
             }
         }

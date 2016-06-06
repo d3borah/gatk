@@ -1,9 +1,8 @@
-package org.broadinstitute.hellbender.tools.spark.pipelines.metrics;
+package org.broadinstitute.hellbender.metrics;
 
 import org.broadinstitute.hellbender.cmdline.Argument;
-import org.broadinstitute.hellbender.metrics.MetricAccumulationLevel;
-import org.broadinstitute.hellbender.metrics.MetricsArgs;
 
+import java.io.File;
 import java.io.Serializable;
 import java.util.EnumSet;
 import java.util.Set;
@@ -16,36 +15,39 @@ import java.util.Set;
 //       the region specified, and only first end if both are available.
 // TODO: user argument validation (eg. maxMADTolerance)
 
-// TODO: this class should really be:
-// -moved to the engine.metrics package (or wherever we wind up putting metrics collector
-//  argument collections that are shared between the walker and Spark versions of the tools)
-// -renamed to InsertSizeMetricsArgs
-// -shared with the walker version of CollectInsertSizeMetrics (currently its only used in the Spark
-// tool, which has many more command line arguments than the walker version)
-
-//TODO : this file should be removed and replaced by InsertSizeMetricsArgs, which is shared with the
-// walker version
-
 /**
- * MetricsArgs argument collection for InsertSize metrics. All members should be
- * instantiable as command line arguments.
+ * Args for InsertSizeMetrics
  */
-public class InsertSizeMetricsCollectorSparkArgs extends MetricsArgs implements Serializable {
-    private static final long serialVersionUID = 1;
+// TODO: This class currentl represents the union  of arguments used by the walker and Spark tools, but the walker
+// version doesn't yet support all of these arguments
+public class InsertSizeMetricsArgs extends MetricsArgs implements Serializable {
 
-    @Argument(doc = "A local path to PDF file where histogram plot will be saved in.",
-            shortName = "HIST",
-            fullName = "HistogramPlotPDF",
-            optional = false)
-    public String histogramPlotFile = null;
+    private static final long serialVersionUID = 1L;
 
-    @Argument(doc = "Generate mean, sd and plots by trimming the data down to MEDIAN + maxMADTolerance*MEDIAN_ABSOLUTE_DEVIATION. " +
+    @Argument(fullName = "histogramPlotFile",
+            shortName="H",
+            doc="File to write insert size Histogram chart to.")
+    public File histogramPlotFile;
+
+    @Argument(doc="Generate mean, sd and plots by trimming the data down to MEDIAN + DEVIATIONS*MEDIAN_ABSOLUTE_DEVIATION. " +
             "This is done because insert size data typically includes enough anomalous values from chimeras and other " +
             "artifacts to make the mean and sd grossly misleading regarding the real distribution.",
-            shortName = "TOL",
-            fullName = "HistogramPlotDeviationsTolerance",
-            optional = true)
+        shortName = "TOL",
+        fullName = "HistogramPlotDeviationsTolerance",
+        optional = true)
     public double maxMADTolerance = 10.0;
+    //public double deviations = 10;
+
+    @Argument(shortName="W", doc="Explicitly sets the Histogram width, overriding automatic truncation of Histogram tail. " +
+            "Also, when calculating mean and standard deviation, only bins <= HISTOGRAM_WIDTH will be included.", optional=true)
+    public Integer histogramWidth = null;
+
+    @Argument(shortName="M", doc="When generating the Histogram, discard any data categories (out of FR, TANDEM, RF) that have fewer than this " +
+            "percentage of overall reads. (Range: 0 to 1).")
+    public float minimumPct = 0.05f;
+
+    @Argument(doc = "Should an output plot be created")
+    public boolean producePlot = false;
 
     // read filtering criteria
     @Argument(doc = "If set to true, filter pairs of reads that are not properly--as judged by aligner--oriented.",

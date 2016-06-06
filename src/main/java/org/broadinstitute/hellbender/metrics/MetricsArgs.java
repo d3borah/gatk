@@ -5,12 +5,16 @@ import org.broadinstitute.hellbender.cmdline.Argument;
 import org.broadinstitute.hellbender.cmdline.StandardArgumentDefinitions;
 
 import java.io.File;
+import java.io.Serializable;
 
 /**
- * Base class for defining a set of metrics collector arguments. The members should be
- * instantiable as command line arguments.
+ * Base class for defining a set of metrics collector arguments.
+ *
+ * The members should be instantiable as command line arguments.
  */
-public class MetricsArgs {
+public class MetricsArgs implements Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     @Argument(fullName = StandardArgumentDefinitions.OUTPUT_LONG_NAME,
             shortName = StandardArgumentDefinitions.OUTPUT_SHORT_NAME, doc = "File to write the output to.")

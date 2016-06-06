@@ -3,11 +3,15 @@ package org.broadinstitute.hellbender.metrics;
 import org.broadinstitute.hellbender.cmdline.Argument;
 import org.broadinstitute.hellbender.cmdline.StandardArgumentDefinitions;
 
+import java.io.Serializable;
+
 /**
  * MetricsArgs argument collection for QualityYield metrics. All members should be
  * instantiable as command line arguments.
  */
-public class QualityYieldMetricsArgs extends MetricsArgs {
+public class QualityYieldMetricsArgs extends MetricsArgs implements Serializable {
+
+    private static final long serialVersionUID = 1;
 
     @Argument(shortName = StandardArgumentDefinitions.USE_ORIGINAL_QUALITIES_SHORT_NAME,
             fullName = StandardArgumentDefinitions.USE_ORIGINAL_QUALITIES_LONG_NAME,

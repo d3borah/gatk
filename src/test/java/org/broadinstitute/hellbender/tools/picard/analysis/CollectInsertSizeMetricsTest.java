@@ -3,6 +3,7 @@ package org.broadinstitute.hellbender.tools.picard.analysis;
 import htsjdk.samtools.metrics.MetricsFile;
 import org.broadinstitute.hellbender.CommandLineProgramTest;
 import org.broadinstitute.hellbender.metrics.InsertSizeMetrics;
+import org.broadinstitute.hellbender.metrics.MetricAccumulationLevel;
 import org.broadinstitute.hellbender.utils.test.ArgumentsBuilder;
 import org.broadinstitute.hellbender.utils.test.BaseTest;
 import org.testng.Assert;
@@ -48,8 +49,16 @@ public final class CollectInsertSizeMetricsTest extends CommandLineProgramTest {
             args.add("-R");
             args.add(REF.getAbsolutePath());
         }
-        args.add("--HISTOGRAM_FILE");
+        args.add("--histogramPlotFile");
         args.add(pdf.getAbsolutePath());
+
+        // accumulation level options (all included for better test coverage)
+        args.add("-" + "LEVEL");
+        args.add(MetricAccumulationLevel.SAMPLE.toString());
+        args.add("-" + "LEVEL");
+        args.add(MetricAccumulationLevel.LIBRARY.toString());
+        args.add("-" + "LEVEL");
+        args.add(MetricAccumulationLevel.READ_GROUP.toString());
 
         runCommandLine(args.getArgsArray());
 

@@ -35,9 +35,10 @@ public abstract class SinglePassSamProgram extends PicardCommandLineProgram {
             shortName = StandardArgumentDefinitions.INPUT_SHORT_NAME, doc = "Input SAM/BAM file.")
     public File INPUT;
 
-    @Argument(fullName = StandardArgumentDefinitions.OUTPUT_LONG_NAME,
-            shortName = StandardArgumentDefinitions.OUTPUT_SHORT_NAME, doc = "File to write the output to.")
-    public File OUTPUT;
+    //TODO: this conflicts with the output command line arg in MetricsArgs
+//    @Argument(fullName = StandardArgumentDefinitions.OUTPUT_LONG_NAME,
+//            shortName = StandardArgumentDefinitions.OUTPUT_SHORT_NAME, doc = "File to write the output to.")
+//    public File OUTPUT;
 
     @Argument(doc = "If true (default), then the sort order in the header file will be ignored.",
             shortName = StandardArgumentDefinitions.ASSUME_SORTED_SHORT_NAME)

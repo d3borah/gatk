@@ -39,6 +39,27 @@ public final class CountVariantsSparkIntegrationTest extends CommandLineProgramT
         };
     }
 
+    @DataProvider(name="intervals")
+    public Object[][] intervals(){
+        return new Object[][]{
+                new Object[]{"", 26L}, // no intervals specified
+                new Object[]{"-L chr1", 14L},
+        };
+    }
+
+    @Test(dataProvider = "intervals", groups = "spark")
+    public void testCountVariantsWithIntervals(final String intervalArgs, final long expected) throws Exception {
+        final File outputTxt = createTempFile("count_variants", ".txt");
+        ArgumentsBuilder args = new ArgumentsBuilder();
+        args.addVCF(COUNT_VARIANTS_VCF);
+        args.add(intervalArgs);
+        args.addOutput(outputTxt);
+        this.runCommandLine(args.getArgsArray());
+
+        final String readIn = FileUtils.readFileToString(outputTxt.getAbsoluteFile());
+        Assert.assertEquals((int)Integer.valueOf(readIn), expected);
+    }
+
     @Test(groups = "spark")
     public void testNoNPRWhenOutputIsUnspecified(){
         ArgumentsBuilder args = new ArgumentsBuilder();

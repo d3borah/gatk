@@ -4,14 +4,7 @@ import com.esotericsoftware.kryo.DefaultSerializer;
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
-import com.google.cloud.dataflow.sdk.options.PipelineOptions;
-import org.broadinstitute.hellbender.exceptions.GATKException;
-import org.broadinstitute.hellbender.tools.spark.utils.HopscotchHashSet;
 import org.broadinstitute.hellbender.utils.BaseUtils;
-import org.broadinstitute.hellbender.utils.gcs.BucketUtils;
-
-import java.io.*;
-import java.util.Set;
 
 /**
  * An immutable SVKmer.
@@ -209,39 +202,6 @@ public class SVKmer implements Comparable<SVKmer> {
         }
         // we built the string in least-significant to most-significant bit order.  reverse it now.
         return sb.reverse().toString();
-    }
-
-    /**
-     * Read a file of kmers.
-     * Each line must be exactly SVConstants.KMER_SIZE characters long, and must match [ACGT]*.
-     */
-    public static Set<SVKmer> readKmersFile( final String kmersFile, final PipelineOptions popts ) {
-        final Set<SVKmer> kmers;
-
-        try ( final BufferedReader rdr =
-                      new BufferedReader(new InputStreamReader(BucketUtils.openFile(kmersFile, popts))) ) {
-            final long fileLength = BucketUtils.fileSize(kmersFile, popts);
-            kmers = new HopscotchHashSet<>((int)(fileLength/(SVConstants.KMER_SIZE+1)));
-            String line;
-            while ( (line = rdr.readLine()) != null ) {
-                if ( line.length() != SVConstants.KMER_SIZE ) {
-                    throw new GATKException("SVKmer kill set contains a line of length " + line.length() +
-                            " but we were expecting K=" + SVConstants.KMER_SIZE);
-                }
-
-                final SVKmerizer kmerizer = new SVKmerizer(line, SVConstants.KMER_SIZE);
-                if ( !kmerizer.hasNext() ) {
-                    throw new GATKException("Unable to kmerize the kmer kill set string '" + line + "'.");
-                }
-
-                kmers.add(kmerizer.next());
-            }
-        }
-        catch ( final IOException e ) {
-            throw new GATKException("Unable to read kmer kill set.", e);
-        }
-
-        return kmers;
     }
 
     private static long reverseComplementByteValueAsLong( final int bIn ) {

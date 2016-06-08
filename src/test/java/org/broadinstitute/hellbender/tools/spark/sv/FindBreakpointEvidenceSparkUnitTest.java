@@ -33,6 +33,7 @@ public final class FindBreakpointEvidenceSparkUnitTest extends BaseTest {
     private final String asmQNamesFile = toolDir+"SVBreakpointsTest.assembly.qnames";
     private final String fastqFile = toolDir+"SVBreakpointsTest.assembly";
 
+    private final FindBreakpointEvidenceSpark.Params params = FindBreakpointEvidenceSpark.defaultParams;
     private final JavaSparkContext ctx = SparkContextFactory.getTestSparkContext();
     private final ReadsSparkSource readsSource = new ReadsSparkSource(ctx);
     private final SAMFileHeader header = readsSource.getHeader(readsFile, null, null);
@@ -56,14 +57,14 @@ public final class FindBreakpointEvidenceSparkUnitTest extends BaseTest {
     @Test(groups = "spark")
     public void getIntervalsTest() {
         final List<FindBreakpointEvidenceSpark.Interval> actualIntervals =
-                FindBreakpointEvidenceSpark.getIntervals(broadcastMetadata, header, mappedReads, locations);
+                FindBreakpointEvidenceSpark.getIntervals(params, broadcastMetadata, header, mappedReads, locations);
         Assert.assertEquals(actualIntervals, expectedIntervalList);
     }
 
     @Test(groups = "spark")
     public void getQNamesTest() {
         final HopscotchHashSet<FindBreakpointEvidenceSpark.QNameAndInterval> qNamesSetActual =
-                FindBreakpointEvidenceSpark.getQNames(ctx, broadcastMetadata, expectedIntervalList, mappedReads);
+                FindBreakpointEvidenceSpark.getQNames(params, ctx, broadcastMetadata, expectedIntervalList, mappedReads);
         Assert.assertEquals(qNamesSetActual, expectedQNames);
     }
 
@@ -72,15 +73,15 @@ public final class FindBreakpointEvidenceSparkUnitTest extends BaseTest {
         final HopscotchHashSet<SVKmer> killSet = new HopscotchHashSet<>(2);
         killSet.add(SVKmerizer.toKmer("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"));
         killSet.add(SVKmerizer.toKmer("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"));
-        final List<SVKmer> highCountKmers = FindBreakpointEvidenceSpark.getHighCountKmers(reads, locations, null);
+        final List<SVKmer> highCountKmers = FindBreakpointEvidenceSpark.getHighCountKmers(params, reads, locations, null);
         Assert.assertEquals(highCountKmers.size(), 2);
         killSet.addAll(highCountKmers);
         Assert.assertEquals(killSet.size(), 2);
 
         final Set<FindBreakpointEvidenceSpark.KmerAndInterval> actualKmerAndIntervalSet =
                 new HopscotchHashSet<>(
-                        FindBreakpointEvidenceSpark.getKmerIntervals(ctx, expectedQNames, killSet, reads, locations, null));
-        final Set<SVKmer> expectedKmers = SVKmer.readKmersFile(kmersFile, null);
+                        FindBreakpointEvidenceSpark.getKmerIntervals(params, ctx, expectedQNames, killSet, reads, locations, null));
+        final Set<SVKmer> expectedKmers = SVUtils.readKmersFile(params.kSize, kmersFile, null);
         Assert.assertEquals(actualKmerAndIntervalSet.size(), expectedKmers.size());
         for ( final FindBreakpointEvidenceSpark.KmerAndInterval kmerAndInterval : actualKmerAndIntervalSet ) {
             Assert.assertTrue(expectedKmers.contains(new SVKmer(kmerAndInterval)));
@@ -89,14 +90,14 @@ public final class FindBreakpointEvidenceSparkUnitTest extends BaseTest {
 
     @Test(groups = "spark")
     public void getAssemblyQNamesTest() throws FileNotFoundException {
-        final Set<SVKmer> expectedKmers = SVKmer.readKmersFile(kmersFile, null);
+        final Set<SVKmer> expectedKmers = SVUtils.readKmersFile(params.kSize, kmersFile, null);
         final HopscotchHashSet<FindBreakpointEvidenceSpark.KmerAndInterval> kmerAndIntervalSet =
                 new HopscotchHashSet<>(expectedKmers.size());
         for ( final SVKmer kmer : expectedKmers ) {
             kmerAndIntervalSet.add(new FindBreakpointEvidenceSpark.KmerAndInterval(kmer, 0));
         }
         final HopscotchHashSet<FindBreakpointEvidenceSpark.QNameAndInterval> actualAssemblyQNames =
-                new HopscotchHashSet<>(FindBreakpointEvidenceSpark.getAssemblyQNames(ctx, kmerAndIntervalSet, reads));
+                new HopscotchHashSet<>(FindBreakpointEvidenceSpark.getAssemblyQNames(params, ctx, kmerAndIntervalSet, reads));
         Assert.assertEquals(expectedAssemblyQNames.size(), actualAssemblyQNames.size());
     }
 

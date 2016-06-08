@@ -36,8 +36,11 @@ public final class FindBadGenomicKmersSpark extends GATKSparkTool {
     private static final int REF_RECORDS_PER_PARTITION = 1024*1024 / REF_RECORD_LEN;
 
     @Argument(doc = "file for ubiquitous kmer output", shortName = StandardArgumentDefinitions.OUTPUT_SHORT_NAME,
-            fullName = StandardArgumentDefinitions.OUTPUT_LONG_NAME, optional = false)
+            fullName = StandardArgumentDefinitions.OUTPUT_LONG_NAME)
     private String outputFile;
+
+    @Argument(doc = "kmer size.", fullName = "kSize", optional = true)
+    private int kSize = SVConstants.KMER_SIZE;
 
     @Override
     public boolean requiresReference() {
@@ -52,7 +55,7 @@ public final class FindBadGenomicKmersSpark extends GATKSparkTool {
         if ( hdr != null ) dict = hdr.getSequenceDictionary();
         final PipelineOptions options = getAuthenticatedGCSOptions();
         final List<SVKmer> killList = findBadGenomicKmers(ctx, getReference(), options, dict);
-        writeKmersToOutput(BucketUtils.createFile(outputFile, options), killList);
+        SVUtils.writeKmersFile(kSize, outputFile, options, killList);
     }
 
     /** Find high copy number kmers in the reference sequence */
@@ -65,19 +68,6 @@ public final class FindBadGenomicKmersSpark extends GATKSparkTool {
 
         // Find the high copy number kmers
         return processRefRDD(refRDD);
-    }
-
-    /** Write kmer list to file. */
-    public static void writeKmersToOutput( final OutputStream outputStream, final List<SVKmer> kmerList ) {
-        try ( final Writer writer = new BufferedWriter(new OutputStreamWriter(outputStream)) ) {
-            for ( final SVKmer kmer : kmerList ) {
-                writer.write(kmer.toString(SVConstants.KMER_SIZE));
-                writer.write('\n');
-            }
-        }
-        catch ( final IOException e ) {
-            throw new GATKException("Unable to write ubiquitous kmer kill file.", e);
-        }
     }
 
     /**

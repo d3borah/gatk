@@ -5,6 +5,8 @@ import htsjdk.variant.variantcontext.*;
 import htsjdk.variant.variantcontext.writer.Options;
 import htsjdk.variant.variantcontext.writer.VariantContextWriter;
 import org.apache.commons.lang3.tuple.Pair;
+import org.broadinstitute.hellbender.tools.walkers.genotyper.GenotypeAssignmentMethod;
+import org.broadinstitute.hellbender.tools.walkers.genotyper.AlleleSubsettingUtils;
 import org.broadinstitute.hellbender.utils.BaseUtils;
 import org.broadinstitute.hellbender.utils.GenomeLoc;
 import org.broadinstitute.hellbender.utils.MathUtils;
@@ -1237,47 +1239,47 @@ public final class GATKVariantContextUtilsUnitTest extends BaseTest {
 
         for ( final List<Allele> alleles : allSubsetAlleles ) {
             for ( final double[] pls : allPLs ) {
-                tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.SET_TO_NO_CALL, pls, AA, alleles, GATKVariantContextUtils.noCallAlleles(2)});
+                tests.add(new Object[]{GenotypeAssignmentMethod.SET_TO_NO_CALL, pls, AA, alleles, GATKVariantContextUtils.noCallAlleles(2)});
             }
         }
 
         for ( final List<Allele> originalGT : Arrays.asList(AA, AC, CC, AG, CG, GG) ) {
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.USE_PLS_TO_ASSIGN, homRefPL, originalGT, AC, AA});
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.USE_PLS_TO_ASSIGN, hetPL, originalGT, AC, AC});
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.USE_PLS_TO_ASSIGN, homVarPL, originalGT, AC, CC});
+            tests.add(new Object[]{GenotypeAssignmentMethod.USE_PLS_TO_ASSIGN, homRefPL, originalGT, AC, AA});
+            tests.add(new Object[]{GenotypeAssignmentMethod.USE_PLS_TO_ASSIGN, hetPL, originalGT, AC, AC});
+            tests.add(new Object[]{GenotypeAssignmentMethod.USE_PLS_TO_ASSIGN, homVarPL, originalGT, AC, CC});
         }
 
         for ( final double[] pls : allPLs ) {
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, AA, AC, AA});
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, AC, AC, AC});
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, CC, AC, CC});
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, CG, AC, AC});
+            tests.add(new Object[]{GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, AA, AC, AA});
+            tests.add(new Object[]{GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, AC, AC, AC});
+            tests.add(new Object[]{GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, CC, AC, CC});
+            tests.add(new Object[]{GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, CG, AC, AC});
 
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, AA, AG, AA});
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, AC, AG, AA});
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, CC, AG, AA});
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, CG, AG, AG});
+            tests.add(new Object[]{GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, AA, AG, AA});
+            tests.add(new Object[]{GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, AC, AG, AA});
+            tests.add(new Object[]{GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, CC, AG, AA});
+            tests.add(new Object[]{GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, CG, AG, AG});
 
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, AA, ACG, AA});
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, AC, ACG, AC});
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, CC, ACG, CC});
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, AG, ACG, AG});
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, CG, ACG, CG});
-            tests.add(new Object[]{GATKVariantContextUtils.GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, GG, ACG, GG});
+            tests.add(new Object[]{GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, AA, ACG, AA});
+            tests.add(new Object[]{GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, AC, ACG, AC});
+            tests.add(new Object[]{GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, CC, ACG, CC});
+            tests.add(new Object[]{GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, AG, ACG, AG});
+            tests.add(new Object[]{GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, CG, ACG, CG});
+            tests.add(new Object[]{GenotypeAssignmentMethod.BEST_MATCH_TO_ORIGINAL, pls, GG, ACG, GG});
         }
 
         return tests.toArray(new Object[][]{});
     }
 
     @Test(dataProvider = "UpdateGenotypeAfterSubsettingData")
-    public void testUpdateGenotypeAfterSubsetting(final GATKVariantContextUtils.GenotypeAssignmentMethod mode,
+    public void testUpdateGenotypeAfterSubsetting(final GenotypeAssignmentMethod mode,
                                                   final double[] likelihoods,
                                                   final List<Allele> originalGT,
                                                   final List<Allele> allelesToUse,
                                                   final List<Allele> expectedAlleles) {
         final GenotypeBuilder gb = new GenotypeBuilder("test");
         final double[] logLikelhoods = MathUtils.normalizeFromLog10(likelihoods, true, false);
-        GATKVariantContextUtils.updateGenotypeAfterSubsetting(originalGT, gb, mode, logLikelhoods, allelesToUse);
+        AlleleSubsettingUtils.updateGenotypeCallAfterSubsetting(originalGT, gb, mode, logLikelhoods, allelesToUse);
         final Genotype g = gb.make();
         Assert.assertEquals(new LinkedHashSet<>(g.getAlleles()), new LinkedHashSet<>(expectedAlleles));
     }
@@ -1408,7 +1410,7 @@ public final class GATKVariantContextUtilsUnitTest extends BaseTest {
                                        final VariantContext selectedVC,
                                        final List<Genotype> expectedGenotypes) {
         final VariantContext selectedVCwithGTs = new VariantContextBuilder(selectedVC).genotypes(originalVC.getGenotypes()).make();
-        final GenotypesContext actual = GATKVariantContextUtils.updatePLsAndAD(selectedVCwithGTs, originalVC);
+        final GenotypesContext actual = AlleleSubsettingUtils.updatePLsAndAD(selectedVCwithGTs, originalVC);
 
         Assert.assertEquals(actual.size(), expectedGenotypes.size());
         for ( final Genotype expected : expectedGenotypes ) {

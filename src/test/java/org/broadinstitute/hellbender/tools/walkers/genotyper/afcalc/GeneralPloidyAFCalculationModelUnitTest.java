@@ -4,6 +4,7 @@ import htsjdk.variant.variantcontext.Allele;
 import htsjdk.variant.variantcontext.Genotype;
 import htsjdk.variant.variantcontext.GenotypeBuilder;
 import htsjdk.variant.variantcontext.GenotypesContext;
+import org.broadinstitute.hellbender.tools.walkers.genotyper.GLVectorSizeCache;
 import org.broadinstitute.hellbender.utils.test.BaseTest;
 import org.testng.Assert;
 import org.testng.annotations.BeforeSuite;
@@ -129,7 +130,7 @@ public final class GeneralPloidyAFCalculationModelUnitTest extends BaseTest {
 
     @Test(dataProvider = "getGLs")
     public void testGLs(GetGLsTest cfg) {
-        final int len = GeneralPloidyExactAFCalculator.getNumLikelihoodElements(1 + cfg.numAltAlleles, cfg.ploidy * cfg.GLs.size());
+        final int len = GLVectorSizeCache.getNumLikelihoodElements(1 + cfg.numAltAlleles, cfg.ploidy * cfg.GLs.size());
         double[] priors = new double[len];  // flat priors
 
         final GeneralPloidyExactAFCalculator calc = new GeneralPloidyExactAFCalculator();

@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * Collection of allele counts for a genotype. It encompasses what alleles are present in the genotype and in what number.</p>
@@ -300,9 +302,8 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
      * @return 0 or greater.
      */
     public int alleleIndexAt(final int rank) {
-        if (rank < 0 || rank >= distinctAlleleCount) {
-            throw new IllegalArgumentException("the requested rank " + rank + " is out of range [0," + distinctAlleleCount + ")");
-        }
+        Utils.validateArg(rank >= 0 && rank < distinctAlleleCount,
+                "the requested rank " + rank + " is out of range [0," + distinctAlleleCount + ")");
         return sortedAlleleCounts[rank << 1];
     }
 
@@ -319,9 +320,7 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
      *
      */
     public int alleleRankFor(final int index) {
-        if (index < 0) {
-            throw new IllegalArgumentException("the index must be 0 or greater");
-        }
+        Utils.validateArg(index >= 0, "the index must be 0 or greater");
         return alleleIndexToRank(index, 0, distinctAlleleCount);
     }
 
@@ -461,9 +460,7 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
      * @return 1 or greater.
      */
     public int alleleCountAt(final int rank) {
-        if (rank < 0 || rank >= distinctAlleleCount) {
-            throw new IllegalArgumentException("the rank is out of range");
-        }
+        Utils.validateArg(rank >= 0 && rank < distinctAlleleCount, "the rank is out of range");
         return sortedAlleleCounts[(rank << 1) + 1];
     }
 
@@ -498,9 +495,7 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
      * of each allele where the position in the array is equal to its index.
      */
     public int[] alleleCountsByIndex(final int maximumAlleleIndex) {
-        if (maximumAlleleIndex < 0) {
-            throw new IllegalArgumentException("the requested allele count cannot be less than 0");
-        }
+        Utils.validateArg(maximumAlleleIndex >= 0, "the requested allele count cannot be less than 0");
         final int[] result = new int[maximumAlleleIndex + 1];
         copyAlleleCountsByIndex(result, 0, 0, maximumAlleleIndex);
         return result;
@@ -632,17 +627,13 @@ public final class GenotypeAlleleCounts implements Comparable<GenotypeAlleleCoun
     public <T extends Allele> List<T> asAlleleList(final List<T> allelesToUse) {
         Utils.nonNull(allelesToUse, "the input allele list cannot be null");
         Utils.validateArg(allelesToUse.size() >= maximumAlleleIndex(), "the provided alleles to use does not contain an element for the maximum allele");
-        if (distinctAlleleCount == 1 ) {
-            return Collections.nCopies(ploidy, allelesToUse.get(sortedAlleleCounts[0]));
-        } else {
-            final List<T> result = new ArrayList<>(ploidy);
-            for (int distinctAlleleIndex = 0; distinctAlleleIndex < distinctAlleleCount; distinctAlleleIndex++) {
-                final T allele = allelesToUse.get(sortedAlleleCounts[2*distinctAlleleIndex]);
-                final int repeats = sortedAlleleCounts[2*distinctAlleleIndex+1];
-                result.addAll(Collections.nCopies(repeats, allele));
-            }
-            return result;
-        }
+        return distinctAlleleCount == 1 ? Collections.nCopies(ploidy, allelesToUse.get(sortedAlleleCounts[0])) :
+                IntStream.range(0, distinctAlleleCount).boxed().flatMap(distinctAllele -> {
+                            final T allele = allelesToUse.get(sortedAlleleCounts[2*distinctAllele]);
+                            final int repeats = sortedAlleleCounts[2*distinctAllele+1];
+                            return Collections.nCopies(repeats, allele).stream();
+                        }).collect(Collectors.toList());
     }
+
 
 }

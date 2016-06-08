@@ -31,6 +31,7 @@ import org.broadinstitute.hellbender.engine.filters.VariantFilterLibrary;
 import org.broadinstitute.hellbender.engine.filters.VariantTypesVariantFilter;
 import org.broadinstitute.hellbender.engine.VariantWalker;
 import org.broadinstitute.hellbender.exceptions.UserException;
+import org.broadinstitute.hellbender.tools.walkers.genotyper.AlleleSubsettingUtils;
 import org.broadinstitute.hellbender.utils.commandline.HiddenOption;
 import org.broadinstitute.hellbender.utils.io.ListFileUtils;
 import org.broadinstitute.hellbender.utils.samples.MendelianViolation;
@@ -555,7 +556,7 @@ public final class SelectVariants extends VariantWalker {
         }
 
         final VariantContext sub = subsetRecord(vc, preserveAlleles, removeUnusedAlternates);
-        final VariantContext filteredGenotypeToNocall = setFilteredGenotypeToNocall(sub, setFilteredGenotypesToNocall);
+        final VariantContext filteredGenotypeToNocall = setFilteredGenotypesToNocall ? setFilteredGenotypeToNocall(sub) : sub;
 
         // Not excluding non-variants or subsetted polymorphic variants AND including filtered loci or subsetted variant is not filtered
         if ((!XLnonVariants || filteredGenotypeToNocall.isPolymorphicInSamples()) && (!XLfiltered || !filteredGenotypeToNocall.isFiltered())) {
@@ -1047,34 +1048,19 @@ public final class SelectVariants extends VariantWalker {
             return vc;
         }
 
-        final VariantContextBuilder builder = new VariantContextBuilder(sub);
-
-        // if there are fewer alternate alleles now in the selected VC, we need to fix the PL and AD values
-        GenotypesContext newGC = GATKVariantContextUtils.updatePLsAndAD(sub, vc);
-
-        // since the VC has been subset (either by sample or allele), we need to strip out the MLE tags
-        builder.rmAttribute(GATKVCFConstants.MLE_ALLELE_COUNT_KEY);
-        builder.rmAttribute(GATKVCFConstants.MLE_ALLELE_FREQUENCY_KEY);
-
-        // Remove a fraction of the genotypes if needed
+        // fix the PL and AD values if sub has fewer alleles than original vc and remove a fraction of the genotypes if needed
+        GenotypesContext newGC = AlleleSubsettingUtils.updatePLsAndAD(sub, vc);
         if (fractionGenotypes > 0) {
-            final ArrayList<Genotype> genotypes = new ArrayList<>();
-            for (final Genotype genotype : newGC) {
-                //Set genotype to no call if it falls in the fraction.
-                if (fractionGenotypes > 0 && randomGenotypes.nextDouble() < fractionGenotypes) {
-                    genotypes.add(new GenotypeBuilder(genotype).alleles(diploidNoCallAlleles).noGQ().make());
-                }
-                else {
-                    genotypes.add(genotype);
-                }
-            }
-            newGC = GenotypesContext.create(genotypes);
+            final List<Genotype> genotypes = newGC.stream().map(genotype -> randomGenotypes.nextDouble() > fractionGenotypes ? genotype :
+                    new GenotypeBuilder(genotype).alleles(diploidNoCallAlleles).noGQ().make()).collect(Collectors.toList());
+            newGC = GenotypesContext.create(new ArrayList<>(genotypes));
         }
 
+        // since the VC has been subset (either by sample or allele), we need to strip out the MLE tags
+        final VariantContextBuilder builder = new VariantContextBuilder(sub);
+        builder.rmAttributes(Arrays.asList(GATKVCFConstants.MLE_ALLELE_COUNT_KEY,GATKVCFConstants.MLE_ALLELE_FREQUENCY_KEY));
         builder.genotypes(newGC);
-
         addAnnotations(builder, vc, sub.getSampleNames());
-
         final VariantContext subset = builder.make();
 
         return preserveAlleles? subset : GATKVariantContextUtils.trimAlleles(subset,true,true);
@@ -1084,28 +1070,14 @@ public final class SelectVariants extends VariantWalker {
      * If --setFilteredGtToNocall, set filtered genotypes to no-call
      *
      * @param vc the VariantContext record to set filtered genotypes to no-call
-     * @param filteredGenotypesToNocall  set filtered genotypes to non-call?
      * @return the VariantContext with no-call genotypes if the sample was filtered
      */
-    private VariantContext setFilteredGenotypeToNocall(final VariantContext vc, final boolean filteredGenotypesToNocall) {
-
-        if (!filteredGenotypesToNocall) {
-            return vc;
-        }
-
-        final VariantContextBuilder builder = new VariantContextBuilder(vc);
+    private VariantContext setFilteredGenotypeToNocall(final VariantContext vc) {
         final GenotypesContext genotypes = GenotypesContext.create(vc.getGenotypes().size());
-
-        for (final Genotype g : vc.getGenotypes()) {
-            if (g.isCalled() && g.isFiltered()) {
-                genotypes.add(new GenotypeBuilder(g).alleles(diploidNoCallAlleles).make());
-            }
-            else {
-                genotypes.add(g);
-            }
-        }
-
-        return builder.genotypes(genotypes).make();
+        vc.getGenotypes().stream()
+                .map(g -> g.isCalled() && g.isFiltered() ? new GenotypeBuilder(g).alleles(diploidNoCallAlleles).make() : g)
+                .forEach(genotypes::add);
+        return new VariantContextBuilder(vc).genotypes(genotypes).make();
     }
 
     /*

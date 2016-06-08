@@ -107,9 +107,7 @@ public final class IntervalUtils {
             return null;
         }
         final List<String> contigs = locations.stream().map(l -> l.getContig()).distinct().collect(Collectors.toList());
-        if (contigs.size() != 1){
-            throw new IllegalArgumentException("found different contigs from inputs:" + contigs);
-        }
+        Utils.validateArg(contigs.size() == 1, "found different contigs from inputs:" + contigs);
         final int minStart = locations.stream().mapToInt(l -> l.getStart()).min().getAsInt();
         final int maxEnd   = locations.stream().mapToInt(l -> l.getEnd()).max().getAsInt();
         return new SimpleInterval(contigs.get(0), minStart, maxEnd);

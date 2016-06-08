@@ -3,6 +3,7 @@ package org.broadinstitute.hellbender.tools.exome;
 import org.broadinstitute.hellbender.CommandLineProgramTest;
 import org.broadinstitute.hellbender.cmdline.StandardArgumentDefinitions;
 import org.broadinstitute.hellbender.exceptions.UserException;
+import org.broadinstitute.hellbender.utils.Utils;
 import org.broadinstitute.hellbender.utils.test.BaseTest;
 import org.broadinstitute.hellbender.utils.test.TargetsToolsTestUtils;
 import org.testng.Assert;
@@ -554,9 +555,7 @@ public final class CalculateTargetCoverageIntegrationTest extends CommandLinePro
         }
 
         public Table(final Reader reader) throws IOException {
-            if (reader == null) {
-                throw new IllegalArgumentException("the reader cannot be null");
-            }
+            Utils.nonNull(reader);
             final BufferedReader lineReader = new BufferedReader(reader);
             final List<String> headerLines = new ArrayList<>(10);
             String lastLine;
@@ -567,18 +566,15 @@ public final class CalculateTargetCoverageIntegrationTest extends CommandLinePro
                     break;
             }
             final String[] header = lastLine == null ? null : lastLine.split("\\t");
-            if (header == null) {
-                throw new IllegalArgumentException("the table does not have a header");
-            }
+            Utils.nonNull(header, "the table does not have a header");
             columnCount = header.length;
 
             final List<String> values = new ArrayList<>(100);
             int lineNumber = 1 + 1 + headerLines.size();
             while ((lastLine = lineReader.readLine()) != null) {
                 final String[] lineValues = lastLine.split("\\t");
-                if (lineValues.length != columnCount) {
-                    throw new IllegalArgumentException("line " + lineNumber + " does not has the expected number of columns " + columnCount + ": " + lastLine);
-                }
+                Utils.validateArg(lineValues.length == columnCount,
+                        "line " + lineNumber + " does not has the expected number of columns " + columnCount + ": " + lastLine);
                 values.addAll(Arrays.asList(lineValues));
             }
 

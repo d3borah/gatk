@@ -57,12 +57,8 @@ public final class IndexRange {
      *                                  negative.
      */
     public IndexRange(final int fromIndex, final int toIndex) {
-        if (fromIndex > toIndex) {
-            throw new IllegalArgumentException("the range size cannot be negative");
-        }
-        if (fromIndex < 0) {
-            throw new IllegalArgumentException("the range cannot contain negative indices");
-        }
+        Utils.validateArg(fromIndex <= toIndex, "the range size cannot be negative");
+        Utils.validateArg(fromIndex >= 0, "the range cannot contain negative indices");
         from = fromIndex;
         to = toIndex;
     }
@@ -112,9 +108,7 @@ public final class IndexRange {
      * @throws Error if thrown by {@code lambda} for some index.
      */
     public void forEach(final IntConsumer lambda) {
-        if (lambda == null) {
-            throw new IllegalArgumentException("the lambda function cannot be null");
-        }
+        Utils.nonNull(lambda, "the lambda function cannot be null");
         for (int i = from; i < to; i++) {
             lambda.accept(i);
         }

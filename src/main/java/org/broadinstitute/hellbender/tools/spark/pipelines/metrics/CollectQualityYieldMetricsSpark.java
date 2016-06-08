@@ -151,12 +151,8 @@ public final class CollectQualityYieldMetricsSpark extends GATKSparkTool {
         //merges two objects
         QualityYieldMetrics merge(final QualityYieldMetrics that) {
             Utils.nonNull(that);
-            if (useOriginalQualities != that.useOriginalQualities){
-                throw new IllegalArgumentException("must have the same value for useOriginalQualities");
-            }
-            if (finalized || that.finalized){
-                throw new IllegalArgumentException("can;t merge objects when the calculations are finalized");
-            }
+            Utils.validateArg(useOriginalQualities == that.useOriginalQualities, "must have the same value for useOriginalQualities");
+            Utils.validateArg(!(finalized || that.finalized), "can't merge objects when the calculations are finalized");
 
             TOTAL_READS  += that.TOTAL_READS;
             PF_READS     += that.PF_READS;

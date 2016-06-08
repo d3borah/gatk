@@ -745,12 +745,8 @@ public final class CalculateTargetCoverage extends ReadWalker {
          * @throws IllegalArgumentException if {@code count} is less than 0 or greater than {@code columnTotal}.
          */
         protected String apply(final int count, final long columnTotal) {
-            if (count < 0) {
-                throw new IllegalArgumentException("the count count cannot less than 0");
-            }
-            if (count > columnTotal) {
-                throw new IllegalArgumentException("the count count cannot be larger than the column total");
-            }
+            Utils.validateArg(count >= 0, "the count cannot less than 0");
+            Utils.validateArg(count <= columnTotal, "the count cannot be larger than the column total");
             return operator.apply(count, columnTotal);
         }
     }
@@ -864,9 +860,7 @@ public final class CalculateTargetCoverage extends ReadWalker {
         TargetOutInfo(final Composer composer, final String... headerNames) {
             this.composer = Utils.nonNull(composer, "the info string composer cannot be null");
             this.headerNames = Collections.unmodifiableList(Arrays.asList(Utils.nonNull(headerNames, "the header name list provided cannot be null")));
-            if (this.headerNames.stream().anyMatch(Objects::isNull)) {
-                throw new IllegalArgumentException("the input header-name cannot contain nulls");
-            }
+            Utils.containsNoNull(this.headerNames, "the input header names cannot contain nulls");
         }
 
         /**

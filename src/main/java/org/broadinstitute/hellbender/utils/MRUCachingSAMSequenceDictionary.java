@@ -31,9 +31,8 @@ final class MRUCachingSAMSequenceDictionary {
      * @param dict a non-null, non-empty sequencing dictionary
      */
     public MRUCachingSAMSequenceDictionary(final SAMSequenceDictionary dict) {
-        if ( dict == null ) throw new IllegalArgumentException("Dictionary cannot be null");
-        if ( dict.size() == 0 ) throw new IllegalArgumentException("Dictionary cannot have size zero");
-
+        Utils.nonNull( dict == null, "Dictionary cannot be null");
+        Utils.validateArg( dict.size() > 0, "Dictionary cannot have size zero");
         this.dict = dict;
     }
 

@@ -4,6 +4,7 @@ import htsjdk.samtools.util.Locatable;
 import org.broadinstitute.hellbender.exceptions.GATKException;
 import org.broadinstitute.hellbender.utils.IndexRange;
 import org.broadinstitute.hellbender.utils.SimpleInterval;
+import org.broadinstitute.hellbender.utils.Utils;
 
 import java.util.List;
 import java.util.stream.IntStream;
@@ -172,9 +173,7 @@ public interface TargetCollection<E> {
      * @throws IllegalArgumentException if any, {@code overlapRegion} or {@code targetTask}, is {@code null}.
      */
     default void forEachTarget(final Locatable overlapRegion, final IndexedTargetConsumer<E> consumer) {
-        if (consumer == null) {
-            throw new IllegalArgumentException("the indexed target consumer cannot be null");
-        }
+        Utils.nonNull(consumer, "the indexed target consumer cannot be null");
         final IndexRange indexRange = indexRange(overlapRegion);
         for (int i = indexRange.from; i < indexRange.to; i++) {
             consumer.accept(i, target(i));
@@ -243,12 +242,9 @@ public interface TargetCollection<E> {
      *   {@code range} contains invalid indices in this target collection.
      */
     default List<E> targets(final IndexRange range) {
-        if (range == null) {
-            throw new IllegalArgumentException("range cannot be null");
-        } else if (!range.isValidLength(targetCount())) {
-            throw new IllegalArgumentException(
-                    String.format("index range '%s' is invalid for a targetCount of %d.", range, targetCount()));
-        }
+        Utils.nonNull(range, "range cannot be null");
+        Utils.validateArg(range.isValidLength(targetCount()),
+                String.format("index range '%s' is invalid for a targetCount of %d.", range, targetCount()));
         return targets().subList(range.from, range.to);
     }
 
@@ -261,13 +257,8 @@ public interface TargetCollection<E> {
      * @throws IllegalArgumentException if {@code from} and {@code to} is not a valid target index range.
      */
     default List<E> targets(final int from, final int to) {
-        if (from < 0) {
-            throw new IllegalArgumentException(
-                    String.format("from index (%d) cannot be negative",from));
-        } else if (to > targetCount()) {
-            throw new IllegalArgumentException(
-                    String.format("to index (%d) cannot larger than the target-count (%d)",to, targetCount()));
-        }
+        Utils.validateArg(from >= 0, String.format("from index (%d) cannot be negative",from));
+        Utils.validateArg(to <= targetCount(), String.format("to index (%d) cannot larger than the target-count (%d)",to, targetCount()));
         return targets().subList(from,to);
     }
 

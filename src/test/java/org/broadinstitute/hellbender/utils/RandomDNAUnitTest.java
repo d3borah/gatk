@@ -4,6 +4,8 @@ import org.apache.commons.math3.stat.descriptive.moment.StandardDeviation;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import java.util.stream.IntStream;
+
 public final class RandomDNAUnitTest {
 
     private int[] counts(final byte[] bytes){
@@ -61,13 +63,7 @@ public final class RandomDNAUnitTest {
     }
 
     private int[] pairwiseAdd(int[] a, int[] b) {
-        if (a.length != b.length){
-            throw  new IllegalArgumentException();
-        }
-        final int[] results = new int[a.length];
-        for (int i = 0; i < a.length; i++) {
-            results[i] = a[i] + b[i];
-        }
-        return results;
+        Utils.validateArg(a.length == b.length, "lengths must be equal");
+        return IntStream.range(0, a.length).map(n -> a[n] + b[n]).toArray();
     }
 }

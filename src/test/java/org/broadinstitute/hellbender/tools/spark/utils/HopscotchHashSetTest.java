@@ -13,9 +13,6 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Random;
 
-/**
- * Unit tests for HopscotchHashSet.
- */
 public class HopscotchHashSetTest extends BaseTest {
     private static final int RAND_SEED = 0xdeadf00;
     private static final int HHASH_NVALS = 10000;

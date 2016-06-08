@@ -11,9 +11,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * Created by tsharpe on 4/29/16.
- */
 public class ReadClassifierTest extends BaseTest {
     @Test(groups = "spark")
     void restOfFragmentSizeTest() {
@@ -22,7 +19,7 @@ public class ReadClassifierTest extends BaseTest {
         final int readSize = 151;
         final int fragmentLen = 475;
         final ReadMetadata.ReadGroupFragmentStatistics groupStats = new ReadMetadata.ReadGroupFragmentStatistics(fragmentLen, 25.f);
-        final ReadMetadata readMetadata = new ReadMetadata(header, Collections.singletonList(groupStats), groupStats, readSize);
+        final ReadMetadata readMetadata = new ReadMetadata(header, Collections.singletonList(groupStats), groupStats);
         final String templateName = "xyzzy";
         final int leftStart = 1010101;
         final int rightStart = leftStart + fragmentLen - readSize;

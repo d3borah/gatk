@@ -4,20 +4,27 @@ import com.esotericsoftware.kryo.DefaultSerializer;
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
-import org.apache.spark.serializer.KryoRegistrator;
 import org.broadinstitute.hellbender.exceptions.GATKException;
 import org.broadinstitute.hellbender.utils.read.GATKRead;
 
 /**
  * Various types of read anomalies that provide evidence of genomic breakpoints.
+ * There is a shallow hierarchy based on this class that classifies the anomaly as, for example, a split read,
+ *   or a pair that has both reads on the same reference strand.
+ * Each BreakpointEvidence object comes from examining a single read, and describing its funkiness, if any, by
+ *   instantiating one of the subclasses that addresses that type of funkiness.
  */
 public class BreakpointEvidence implements Comparable<BreakpointEvidence> {
-    private final short contigIndex;
-    private final short eventWidth;
-    private final int contigStart;
-    private final String templateName;
-    private final TemplateEnd templateEnd;
+    private final short contigIndex; // which reference contig (as an index into the sequence dictionary)
+    private final short eventWidth; // i.e., eventEndPosition would be eventStartPosition+eventWidth
+    private final int eventStartPosition; // offset on the contig of the starting position of the event
+    private final String templateName; // QNAME of the read that was funky (i.e., the name of the fragment)
+    private final TemplateEnd templateEnd; // which read we're talking about (first or last, for paired-end reads)
 
+    // Typically UNPAIRED (single read from the template), PAIRED_FIRST (first read from the template), or
+    // PAIRED_LAST (second read from the template).  The SAM format, however, describes other weird possibilities,
+    // and to avoid lying, we also allow the pairedness to be unknown, or for a read to be paired, but neither
+    // first nor last (interior).
     public enum TemplateEnd {
         UNPAIRED(""), PAIRED_UNKNOWN("/?"), PAIRED_FIRST("/1"), PAIRED_SECOND("/2"), PAIRED_INTERIOR("/0");
 
@@ -50,7 +57,7 @@ public class BreakpointEvidence implements Comparable<BreakpointEvidence> {
         if ( templateName == null ) throw new GATKException("Read has no name.");
         this.templateEnd = findTemplateEnd(read);
         this.eventWidth = (short)width;
-        this.contigStart = start;
+        this.eventStartPosition = start;
     }
 
     /**
@@ -62,44 +69,47 @@ public class BreakpointEvidence implements Comparable<BreakpointEvidence> {
         this.templateName = read.getName();
         if ( templateName == null ) throw new GATKException("Read has no name.");
         this.templateEnd = findTemplateEnd(read);
-        this.contigStart = contigOffset - offsetUncertainty;
+        this.eventStartPosition = contigOffset - offsetUncertainty;
         this.eventWidth = (short)(2*offsetUncertainty);
     }
 
     /**
-     * for serialization
+     * a technical constructor for use in Kryo (de-)serialization.
+     * this creates an object by reading a Kryo-serialized stream.
+     * it will be called by subclasses in their own constructors from Kryo streams (as super(kryo, input)).
      */
     protected BreakpointEvidence( final Kryo kryo, final Input input ) {
         this.contigIndex = input.readShort();
         this.eventWidth = input.readShort();
-        this.contigStart = input.readInt();
+        this.eventStartPosition = input.readInt();
         this.templateName = kryo.readObject(input, String.class);
         this.templateEnd = TemplateEnd.values()[input.readByte()];
     }
 
     /**
-     * to make a sentinel
+     * to make a sentinel (a bit of evidence that serves no function other than to mark the end of a stream).
+     * used by the MapPartitioner to flush pending evidence in the FindBreakEvidenceSpark.WindowSorter.
      */
     public BreakpointEvidence( final int contigIndex ) {
         this.contigIndex = (short)contigIndex;
         this.templateName = "sentinel";
         this.templateEnd = TemplateEnd.PAIRED_UNKNOWN;
-        this.contigStart = 0;
+        this.eventStartPosition = 0;
         this.eventWidth = 0;
     }
 
     protected void serialize( final Kryo kryo, final Output output ) {
         output.writeShort(contigIndex);
         output.writeShort(eventWidth);
-        output.writeInt(contigStart);
+        output.writeInt(eventStartPosition);
         kryo.writeObject(output, templateName);
         output.writeByte(templateEnd.ordinal());
     }
 
     public int getContigIndex() { return contigIndex; }
-    public int getContigStart() { return contigStart; }
+    public int getEventStartPosition() { return eventStartPosition; }
     public int getEventWidth() { return eventWidth; }
-    public int getContigEnd() { return contigStart+eventWidth; }
+    public int getContigEnd() { return eventStartPosition +eventWidth; }
     public String getTemplateName() { return templateName; }
     public TemplateEnd getTemplateEnd() { return templateEnd; }
 
@@ -108,7 +118,7 @@ public class BreakpointEvidence implements Comparable<BreakpointEvidence> {
         if ( this == that ) return 0;
         int result = Short.compare(this.contigIndex, that.contigIndex);
         if ( result == 0 ) {
-            result = Integer.compare(this.contigStart, that.contigStart);
+            result = Integer.compare(this.eventStartPosition, that.eventStartPosition);
             if ( result == 0 ) {
                 result = Short.compare(this.eventWidth, that.eventWidth);
                 if ( result == 0 ) {
@@ -127,7 +137,7 @@ public class BreakpointEvidence implements Comparable<BreakpointEvidence> {
 
     @Override
     public String toString() {
-        return contigIndex + "[" + contigStart + ":" + getContigEnd() + "] " + templateName + templateEnd;
+        return contigIndex + "[" + eventStartPosition + ":" + getContigEnd() + "] " + templateName + templateEnd;
     }
 
     @Override
@@ -140,7 +150,7 @@ public class BreakpointEvidence implements Comparable<BreakpointEvidence> {
         final int mult = 1103515245;
         int result = 12345;
         result = mult * result + contigIndex;
-        result = mult * result + contigStart;
+        result = mult * result + eventStartPosition;
         result = mult * result + eventWidth;
         result = mult * result + templateName.hashCode();
         result = mult * result + templateEnd.hashCode();
@@ -159,23 +169,28 @@ public class BreakpointEvidence implements Comparable<BreakpointEvidence> {
     @DefaultSerializer(SplitRead.Serializer.class)
     public static final class SplitRead extends BreakpointEvidence {
         private static final short UNCERTAINTY = 2;
+        private static final String SA_TAG_NAME = "SA";
         private final String cigar;
+        private final String tagSA;
 
         public SplitRead( final GATKRead read, final ReadMetadata metadata, final boolean atStart ) {
             super(read, metadata, atStart ? read.getStart() : read.getEnd(), UNCERTAINTY);
             cigar = read.getCigar().toString();
             if ( cigar == null ) throw new GATKException("Read has no cigar string.");
+            tagSA = read.getAttributeAsString(SA_TAG_NAME);
         }
 
         private SplitRead( final Kryo kryo, final Input input ) {
             super(kryo, input);
             cigar = kryo.readObject(input, String.class);
+            tagSA = kryo.readObjectOrNull(input, String.class);
         }
 
         @Override
         protected void serialize( final Kryo kryo, final Output output ) {
             super.serialize(kryo, output);
             kryo.writeObject(output, cigar);
+            kryo.writeObjectOrNull(output, tagSA, String.class);
         }
 
         @Override
@@ -197,7 +212,7 @@ public class BreakpointEvidence implements Comparable<BreakpointEvidence> {
 
         @Override
         public String toString() {
-            return super.toString() + " Split " + cigar;
+            return super.toString() + " Split " + cigar + (tagSA == null ? " SA: None" : (" SA: " + tagSA));
         }
 
         public static final class Serializer extends com.esotericsoftware.kryo.Serializer<SplitRead> {
@@ -304,28 +319,37 @@ public class BreakpointEvidence implements Comparable<BreakpointEvidence> {
 
     @DefaultSerializer(InterContigPair.Serializer.class)
     public static final class InterContigPair extends BreakpointEvidence {
-        private final int otherContigIndex;
+        private final int mateContigIndex;
+        private final int mateStartPosition;
 
         InterContigPair( final GATKRead read, final ReadMetadata metadata ) {
             super(read, metadata);
-            this.otherContigIndex = metadata.getContigID(read.getMateContig());
+            this.mateContigIndex = metadata.getContigID(read.getMateContig());
+            this.mateStartPosition = read.getMateStart();
         }
 
         private InterContigPair( final Kryo kryo, final Input input ) {
             super(kryo, input);
-            otherContigIndex = input.readInt();
+            mateContigIndex = input.readInt();
+            mateStartPosition = input.readInt();
         }
 
         @Override
         protected void serialize( final Kryo kryo, final Output output ) {
             super.serialize(kryo, output);
-            output.writeInt(otherContigIndex);
+            output.writeInt(mateContigIndex);
+            output.writeInt(mateStartPosition);
         }
 
         @Override
         public int compareTo( final BreakpointEvidence that ) {
             int result = super.compareTo(that);
-            if ( result == 0 ) result = Integer.compare(this.otherContigIndex, ((InterContigPair)that).otherContigIndex);
+            if ( result == 0 ) {
+                result = Integer.compare(this.mateContigIndex, ((InterContigPair)that).mateContigIndex);
+                if ( result == 0 ) {
+                    result = Integer.compare(this.mateStartPosition, ((InterContigPair)that).mateStartPosition);
+                }
+            }
             return result;
         }
 
@@ -336,12 +360,12 @@ public class BreakpointEvidence implements Comparable<BreakpointEvidence> {
 
         @Override
         public int hashCode() {
-            return super.hashCode() + otherContigIndex;
+            return 47*(47*(47*super.hashCode() + mateContigIndex) + mateStartPosition);
         }
 
         @Override
         public String toString() {
-            return super.toString() + " IntercontigPair " + otherContigIndex;
+            return super.toString() + " IntercontigPair " + mateContigIndex;
         }
 
         public static final class Serializer extends com.esotericsoftware.kryo.Serializer<InterContigPair> {

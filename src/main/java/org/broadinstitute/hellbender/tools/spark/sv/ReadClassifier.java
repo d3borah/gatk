@@ -111,10 +111,13 @@ public class ReadClassifier implements Function<GATKRead, Iterator<BreakpointEvi
         } else if ( (read.getStart() < read.getMateStart() && read.isReverseStrand()) ||
                     (read.getStart() > read.getMateStart() && !read.isReverseStrand()) ) {
             evidenceList.add(new BreakpointEvidence.OutiesPair(read, readMetadata));
+// TODO: we need to turn this on to boost our odds of finding large insertions and deletions.
+// This type of evidence is, however, so copious that it overwhelms all the other evidence --
+//   we'll need some way to de-weight it.
 /*      } else {
             final ReadMetadata.ReadGroupFragmentStatistics stats = readMetadata.getStatistics(read.getReadGroup());
             final float zIshScore = (Math.abs(read.getFragmentLength()) - stats.getMedianFragmentSize()) /
-                                        stats.getMedianFragmentSizeVariance();
+                                        stats.getMedianAbsoluteDeviationFragmentSize();
 
             if ( zIshScore < MIN_ZISH_SCORE || (zIshScore > MAX_ZISH_SCORE && zIshScore < CRAZY_ZISH_SCORE) ) {
                 evidenceList.add(new BreakpointEvidence.WeirdTemplateSize(read, readMetadata));

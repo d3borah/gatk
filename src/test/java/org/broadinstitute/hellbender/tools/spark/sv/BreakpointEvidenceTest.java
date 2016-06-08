@@ -4,7 +4,6 @@ import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import htsjdk.samtools.SAMFileHeader;
-import org.broadinstitute.hellbender.engine.spark.GATKRegistrator;
 import org.broadinstitute.hellbender.utils.read.ArtificialReadUtils;
 import org.broadinstitute.hellbender.utils.read.GATKRead;
 import org.broadinstitute.hellbender.utils.test.BaseTest;
@@ -17,9 +16,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/**
- * Unit tests for BreakpointEvidence.
- */
 public class BreakpointEvidenceTest extends BaseTest {
     @Test(groups = "spark")
     void restOfFragmentSizeTest() {
@@ -27,7 +23,7 @@ public class BreakpointEvidenceTest extends BaseTest {
         final String groupName = header.getReadGroups().get(0).getReadGroupId();
         final int readSize = 151;
         final ReadMetadata.ReadGroupFragmentStatistics groupStats = new ReadMetadata.ReadGroupFragmentStatistics(301.f, 25.f);
-        final ReadMetadata readMetadata = new ReadMetadata(header, Collections.singletonList(groupStats), groupStats, readSize);
+        final ReadMetadata readMetadata = new ReadMetadata(header, Collections.singletonList(groupStats), groupStats);
         final String templateName = "xyzzy";
         final int readStart = 1010101;
         final GATKRead read = ArtificialReadUtils.createArtificialRead(header, templateName, 0, readStart, readSize);
@@ -39,7 +35,7 @@ public class BreakpointEvidenceTest extends BaseTest {
         final int evidenceLocus = readStart - uncertainty;
         final BreakpointEvidence evidence2 = new BreakpointEvidence(read, readMetadata, evidenceLocus, (short)uncertainty);
         Assert.assertEquals(evidence1.getContigIndex(), 0);
-        Assert.assertEquals(evidence1.getContigStart(), evidenceLocus-uncertainty);
+        Assert.assertEquals(evidence1.getEventStartPosition(), evidenceLocus-uncertainty);
         Assert.assertEquals(evidence1.getContigEnd(), evidenceLocus+uncertainty);
         Assert.assertEquals(evidence1.getEventWidth(), 2*uncertainty);
         Assert.assertEquals(evidence1.getTemplateName(), templateName);
@@ -58,7 +54,7 @@ public class BreakpointEvidenceTest extends BaseTest {
         final SAMFileHeader samHeader = ArtificialReadUtils.createArtificialSamHeader();
         final List<ReadMetadata.ReadGroupFragmentStatistics> statistics = new ArrayList<>();
         final ReadMetadata.ReadGroupFragmentStatistics nullGroupStatistics = new ReadMetadata.ReadGroupFragmentStatistics(400.f, 75.f);
-        final ReadMetadata metadata = new ReadMetadata(samHeader, statistics, nullGroupStatistics, 101);
+        final ReadMetadata metadata = new ReadMetadata(samHeader, statistics, nullGroupStatistics);
         final List<GATKRead> readPair = ArtificialReadUtils.createPair(samHeader, "firstReadPair", 101, 1010, 1382, false, false);
         final GATKRead read = readPair.get(0);
         evidenceList.add(new BreakpointEvidence.SplitRead(read, metadata, true));

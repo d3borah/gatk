@@ -14,7 +14,7 @@ public final class HopscotchHashTimingTest {
         void execute();
     }
     private static double time( final Action action ) {
-        long nanosecs = System.nanoTime();
+        final long nanosecs = System.nanoTime();
         action.execute();
         return (System.nanoTime() - nanosecs)/1.E9;
     }
@@ -22,12 +22,12 @@ public final class HopscotchHashTimingTest {
     private static final int N_TRIALS = 5;
     private static final int N_VALUES = 20000000;
 
-    public static void main( String[] args ) {
+    public static void main( final String[] args ) {
 
         final Random rng = new Random(0xdeadbeef);
         final List<Integer[]> trials = new ArrayList<>(N_TRIALS);
         for ( int trialId = 0; trialId != N_TRIALS; ++trialId ) {
-            Integer[] values = new Integer[N_VALUES];
+            final Integer[] values = new Integer[N_VALUES];
             for ( int valueId = 0; valueId != N_VALUES; ++valueId ) {
                 values[valueId] = rng.nextInt();
             }
@@ -36,9 +36,9 @@ public final class HopscotchHashTimingTest {
 
         final List<Set<Integer>> hashSets = new ArrayList<>(N_TRIALS);
         System.out.println("HashSet construction: "+time( () -> {
-            for ( Integer[] values : trials ) {
-                Set<Integer> hashSet = new HashSet<>(SVUtils.hashMapCapacity(N_VALUES));
-                for (Integer value : values) {
+            for ( final Integer[] values : trials ) {
+                final Set<Integer> hashSet = new HashSet<>(SVUtils.hashMapCapacity(N_VALUES));
+                for (final Integer value : values) {
                     hashSet.add(value);
                 }
                 hashSets.add(hashSet);
@@ -47,9 +47,9 @@ public final class HopscotchHashTimingTest {
 
         final List<Set<Integer>> hopscotchHashSets = new ArrayList<>(N_TRIALS);
         System.out.println("HopscotchHashSet construction: "+time( () -> {
-            for (Integer[] values : trials) {
-                Set<Integer> hashSet = new HopscotchHashSet<>(N_VALUES);
-                for (Integer value : values) {
+            for (final Integer[] values : trials) {
+                final Set<Integer> hashSet = new HopscotchHashSet<>(N_VALUES);
+                for (final Integer value : values) {
                     hashSet.add(value);
                 }
                 hopscotchHashSets.add(hashSet);
@@ -58,53 +58,53 @@ public final class HopscotchHashTimingTest {
 
         System.out.println("HashSet +retrieval: "+time( () -> {
             for (int trialId = 0; trialId != N_TRIALS; ++trialId) {
-                Set<Integer> hashSet = hashSets.get(trialId);
-                for (Integer value : trials.get(trialId))
+                final Set<Integer> hashSet = hashSets.get(trialId);
+                for (final Integer value : trials.get(trialId))
                     hashSet.contains(value);
             }
         }));
 
         System.out.println("HopscotchHashSet +retrieval: "+time( () -> {
             for (int trialId = 0; trialId != N_TRIALS; ++trialId) {
-                Set<Integer> hashSet = hopscotchHashSets.get(trialId);
-                for (Integer value : trials.get(trialId))
+                final Set<Integer> hashSet = hopscotchHashSets.get(trialId);
+                for (final Integer value : trials.get(trialId))
                     hashSet.contains(value);
             }
         }));
 
-        Integer[] missingValues = new Integer[N_VALUES];
+        final Integer[] missingValues = new Integer[N_VALUES];
         for ( int valueId = 0; valueId != N_VALUES; ++valueId ) {
             missingValues[valueId] = rng.nextInt();
         }
 
         System.out.println("HashSet -retrieval: "+time( () -> {
             for (int trialId = 0; trialId != N_TRIALS; ++trialId) {
-                Set<Integer> hashSet = hashSets.get(trialId);
-                for (Integer value : missingValues)
+                final Set<Integer> hashSet = hashSets.get(trialId);
+                for (final Integer value : missingValues)
                     hashSet.contains(value);
             }
         }));
 
         System.out.println("HopscotchHashSet -retrieval: "+time( () -> {
             for (int trialId = 0; trialId != N_TRIALS; ++trialId) {
-                Set<Integer> hashSet = hopscotchHashSets.get(trialId);
-                for (Integer value : missingValues)
+                final Set<Integer> hashSet = hopscotchHashSets.get(trialId);
+                for (final Integer value : missingValues)
                     hashSet.contains(value);
             }
         }));
 
         System.out.println("HashSet removal: "+time( () -> {
             for (int trialId = 0; trialId != N_TRIALS; ++trialId) {
-                Set<Integer> hashSet = hashSets.get(trialId);
-                for (Integer value : trials.get(trialId))
+                final Set<Integer> hashSet = hashSets.get(trialId);
+                for (final Integer value : trials.get(trialId))
                     hashSet.remove(value);
             }
         }));
 
         System.out.println("HopscotchHashSet removal: "+time( () -> {
             for (int trialId = 0; trialId != N_TRIALS; ++trialId) {
-                Set<Integer> hashSet = hopscotchHashSets.get(trialId);
-                for (Integer value : trials.get(trialId))
+                final Set<Integer> hashSet = hopscotchHashSets.get(trialId);
+                for (final Integer value : trials.get(trialId))
                     hashSet.remove(value);
             }
         }));

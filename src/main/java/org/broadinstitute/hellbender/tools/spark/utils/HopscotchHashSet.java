@@ -12,8 +12,16 @@ import java.util.*;
  * Hash set implementation that provides low memory overhead with a high load factor by using the hopscotch algorithm.
  * This is usually a little slower than the JDK's HashSet (neglecting GC time), but it uses much less memory.
  * It's probably a nice choice for very large collections.
+ *
  * You can make it pretty much equally fast as HashSet by replacing the prime-number table sizing with power-of-2 table
- * sizing, but then it'll behave just as badly as HashSet given crappy hashCode implementations.
+ * sizing, but then it'll behave just as badly as HashSet given poor hashCode implementations.
+ *
+ * Very rarely, and usually when your element type's hashCode implementation is poor, the hopscotching will fail even
+ * after the table is resized to be 1.4 times larger.  In this case an IllegalStateException will be thrown.  To be
+ * honest, I haven't ever seen it happen with this version of the code, but it might.  If it happens to you, you might
+ * want to take a look at your hashCode implementation to make certain it has good avalanche characteristics.  The ones
+ * you see recommended everywhere, that add in the final piece of state, don't have good avalanche.  We try to take care
+ * of this common defect with the SPREADER, but that's not a perfect solution.
  */
 @DefaultSerializer(HopscotchHashSet.Serializer.class)
 public final class HopscotchHashSet<T> extends AbstractSet<T> {
@@ -45,6 +53,7 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
     };
     private static final int SPREADER = 241;
 
+    /** make a hashSet for a specified capacity (or good guess) */
     @SuppressWarnings("unchecked")
     public HopscotchHashSet( final int capacity ) {
         this.capacity = computeCapacity(capacity);
@@ -54,13 +63,9 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
         this.status = new byte[this.capacity];
     }
 
+    /** make a hashSet from a collection */
     public HopscotchHashSet( final Collection<T> collection ) {
         this(collection.size());
-        addAll(collection);
-    }
-
-    public HopscotchHashSet( final Collection<T> collection, final float sizeInflator ) {
-        this((int)(collection.size()*sizeInflator));
         addAll(collection);
     }
 
@@ -134,10 +139,16 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
 
     /**
      * This special iterator type allows you to traverse individual hash buckets.
+     */
+    public Iterator<T> bucketIterator( final int bucketIndex ) { return new BucketIterator(bucketIndex); }
+
+    /**
+     * This special iterator allows you to traverse the hash bucket for a particular key.
      * This lets you implement a multi-map on this collection by using a <K,V>-ish element type having a hashCode that
      * depends only on K.
+     * You supply the key as an Object, because we don't know what your real key type is.
      */
-    public Iterator<T> bucketIterator( final int hashVal ) { return new BucketIterator(hashVal); }
+    public Iterator<T> bucketIterator( final Object obj ) { return new BucketIterator(obj); }
 
     @Override
     public boolean add( final T entry ) {
@@ -387,7 +398,9 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
 
     @SuppressWarnings("unchecked")
     private void resize() {
-        if ( buckets == null ) throw new IllegalStateException("OMG I have no buckets.");
+        if ( buckets == null ) {
+            throw new IllegalStateException("Someone must be doing something ugly with reflection -- I have no buckets.");
+        }
         final int oldCapacity = capacity;
         final int oldSize = size;
         final T[] oldBuckets = buckets;
@@ -405,15 +418,17 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
                 if ( entry != null ) insert(entry);
             }
             while ( (idx = (idx+127)%oldCapacity) != 0 );
-        } catch ( IllegalStateException ise ) {
+        } catch ( final IllegalStateException ise ) {
             capacity = oldCapacity;
             size = oldSize;
             buckets = oldBuckets;
             status = oldStatus;
+            // this shouldn't happen except in the case of really bad hashCode implementations
             throw new IllegalStateException("Hopscotching failed at load factor "+1.*size/capacity+", and resizing didn't help.");
         }
 
         if ( size != oldSize ) {
+            // this should never happen, period.
             throw new IllegalStateException("Lost some elements during resizing.");
         }
     }
@@ -456,8 +471,9 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
     private final class BucketIterator implements Iterator<T> {
         private int bucketIndex;
 
-        BucketIterator( final int hashVal ) {
-            final int bucketIndex = hashToIndex(hashVal);
+        BucketIterator( final Object obj ) { this(hashToIndex(obj.hashCode())); }
+
+        BucketIterator( final int bucketIndex ) {
             this.bucketIndex = isChainHead(bucketIndex) ? bucketIndex : buckets.length;
         }
 

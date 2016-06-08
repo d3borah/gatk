@@ -1,5 +1,6 @@
 package org.broadinstitute.hellbender.utils;
 
+import org.apache.commons.math3.stat.descriptive.moment.StandardDeviation;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -52,7 +53,7 @@ public final class RandomDNAUnitTest {
     public void checkResults(final int[] results, final int n, final int m) {
         final double[] dresults = MathUtils.promote(results);
         final double mean = MathUtils.mean(dresults, 0, dresults.length);
-        final double std = MathUtils.stddev(dresults, 0, dresults.length);
+        final double std = new StandardDeviation().evaluate(dresults);
         final double expectedMean = (n*m)/4.0;
         final double s = std; // not really because it's the population not the sample dtd but it'll do
         Assert.assertTrue(mean < expectedMean + 2 * s / Math.sqrt(n * m), "unexpected mean:" + mean);

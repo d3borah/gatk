@@ -342,25 +342,6 @@ public final class MathUtilsUnitTest extends BaseTest {
     }
 
     @Test
-    public void testCovarianceDivergences() {
-        logger.warn("Executing testCovarianceDivergences");
-        //two symmetric positive-definite matrices
-        double[][] cov1 = { {5, 2, 3},
-                            {2, 7, 5},
-                            {3, 5, 6}};
-
-        double[][] cov2 = { {11, 3, 3},
-                            {3, 7, 5},
-                            {3, 5, 13}};
-
-        RealMatrix mat1 = new Array2DRowRealMatrix(cov1);
-        RealMatrix mat2 = new Array2DRowRealMatrix(cov2);
-
-        Assert.assertEquals(MathUtils.covarianceKLDivergence(mat1, mat2), 3.65393, 1e-4);   //from Mathematica
-        Assert.assertEquals(MathUtils.covarianceGeodesicDistance(mat1, mat2), 1.86205,1e-4);    //from Mathematica
-    }
-
-    @Test
     public void testSum() {
         double[] doubleTest = {-1,0,1,2,3};
         long[] longTest = {-1,0,1,2,3};
@@ -392,14 +373,6 @@ public final class MathUtilsUnitTest extends BaseTest {
         Assert.assertEquals(MathUtils.mean(test, 0, 0), Double.NaN);
         Assert.assertEquals(MathUtils.mean(test, 0, 1), 0.0);
         Assert.assertEquals(MathUtils.mean(test, 0, 3), 34.0);
-    }
-
-    @Test
-    public void testStddev() {
-        double[] test = {0, -1, 1, -2, 2, -3};
-        Assert.assertEquals(MathUtils.stddev(test, 0, 0), Double.NaN);
-        Assert.assertEquals(MathUtils.stddev(test, 0, 1), 0.0);
-        Assert.assertEquals(MathUtils.stddev(test, 0, 6), 1.707825127659933, 1e-14);
     }
 
     @Test
@@ -575,35 +548,6 @@ public final class MathUtilsUnitTest extends BaseTest {
         Assert.assertEquals(sumNoMult, sumNoMult_reordered, sumNoMult + " vs " + sumNoMult_reordered);
         Assert.assertEquals(sumMult100000_reordered, sumMult100000);
         Assert.assertNotEquals(sumNoMult, sumMult100000);
-    }
-
-
-    @DataProvider(name="numbersForMedian")
-    public Object[][] getNumbersForMedian(){
-        return new Object[][] {
-                {Arrays.asList(0), 0},
-                {Arrays.asList(0,1, 2), 1},
-                {Arrays.asList(1, 0, 2), 1},
-                {Arrays.asList(0, 1), .5},
-                {Arrays.asList(-10.0, 0, 10.5), 0},
-                {Arrays.asList(1, 1, 5, 2, 1, 5, 1, 9),1.5},
-        };
-    }
-
-    @Test(dataProvider = "numbersForMedian")
-    public <T extends Number & Comparable<T>> void testMedian(List<T> values, double expected){
-        Assert.assertEquals(MathUtils.median(values), expected);
-    }
-
-    @Test(expectedExceptions = IllegalArgumentException.class)
-    public void testMedianOfEmptyList(){
-        Collection<Integer> empty = Collections.emptyList();
-        MathUtils.median(empty);
-    }
-
-    @Test(expectedExceptions = IllegalArgumentException.class)
-    public void testMedianOfNullList(){
-        MathUtils.median(null);
     }
 
     @Test

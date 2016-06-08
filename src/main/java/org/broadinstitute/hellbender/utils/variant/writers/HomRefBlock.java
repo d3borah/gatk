@@ -8,6 +8,7 @@ import htsjdk.variant.variantcontext.GenotypeBuilder;
 import htsjdk.variant.variantcontext.VariantContext;
 import htsjdk.variant.variantcontext.VariantContextBuilder;
 import htsjdk.variant.vcf.VCFConstants;
+import org.apache.commons.math3.stat.descriptive.rank.Median;
 import org.broadinstitute.hellbender.exceptions.GATKException;
 import org.broadinstitute.hellbender.utils.MathUtils;
 import org.broadinstitute.hellbender.utils.Utils;
@@ -164,7 +165,7 @@ final class HomRefBlock implements Locatable {
     /** Get the median DP observed within this band
      * If there are an even number of DPs recorded in this band the median is the mean of the two middle values */
     public int getMedianDP() {
-        return (int) Math.round(MathUtils.median(DPs));
+        return (int) Math.round(new Median().evaluate(DPs.stream().mapToDouble(x->x).toArray()));
     }
 
     /** Get the min PLs observed within this band, can be null if no PLs have yet been observed */

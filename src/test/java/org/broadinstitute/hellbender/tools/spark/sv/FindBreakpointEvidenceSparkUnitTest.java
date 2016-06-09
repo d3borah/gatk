@@ -111,10 +111,11 @@ public final class FindBreakpointEvidenceSparkUnitTest extends BaseTest {
     private static void compareFastqs(
             final Tuple2<Integer, List<byte[]>> intervalAndFastqBytes,
             final String fastqFile ) throws IOException {
-        final byte[][] fastqs = FindBreakpointEvidenceSpark.sortFastqRecs(intervalAndFastqBytes._2);
-        final byte[] concatenatedFastqs = new byte[Arrays.stream(fastqs).mapToInt(fastq -> fastq.length).sum()];
+        final List<byte[]> fastqList = intervalAndFastqBytes._2;
+        SVFastqUtils.sortFastqRecords(fastqList);
+        final byte[] concatenatedFastqs = new byte[fastqList.stream().mapToInt(fastq -> fastq.length).sum()];
         int idx = 0;
-        for ( final byte[] fastq : fastqs ) {
+        for ( final byte[] fastq : fastqList ) {
             System.arraycopy(fastq, 0, concatenatedFastqs, idx, fastq.length);
             idx += fastq.length;
         }

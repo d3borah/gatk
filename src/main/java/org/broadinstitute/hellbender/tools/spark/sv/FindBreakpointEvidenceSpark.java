@@ -23,7 +23,6 @@ import org.broadinstitute.hellbender.tools.spark.utils.HopscotchHashSet;
 import org.broadinstitute.hellbender.tools.spark.utils.MapPartitioner;
 import org.broadinstitute.hellbender.utils.gcs.BucketUtils;
 import org.broadinstitute.hellbender.utils.read.GATKRead;
-import org.broadinstitute.hellbender.utils.read.ReadUtils;
 import scala.Tuple2;
 
 import java.io.*;
@@ -326,46 +325,14 @@ public final class FindBreakpointEvidenceSpark extends GATKSparkTool {
         return result;
     }
 
-    /**
-     * Sort a list of FASTQ records.
-     * This puts them into proper order for an interleaved FASTQ file (since the FASTQ record begins with the
-     * template name).
-     */
-    @VisibleForTesting static byte[][] sortFastqRecs( final List<byte[]> fastqRecs ) {
-        final byte[][] fastqsArray = new byte[fastqRecs.size()][];
-        fastqRecs.toArray(fastqsArray);
-
-        // since the fastq bytes start with the read name, this will interleave pairs
-        Arrays.sort(fastqsArray, FindBreakpointEvidenceSpark::compareByteArrays);
-
-        return fastqsArray;
-    }
-
     /** write a FASTQ file for an assembly */
     private static void writeFastq( final Tuple2<Integer, List<byte[]>> intervalAndFastqs,
                                     final String outputDir ) {
-        final byte[][] fastqsArray = sortFastqRecs(intervalAndFastqs._2);
+        final List<byte[]> fastqsList = intervalAndFastqs._2;
+        SVFastqUtils.sortFastqRecords(fastqsList);
 
-        // we're not going to try to marshal PipelineOptions for now -- not sure it's a good idea, anyway
-        final PipelineOptions pipelineOptions = null;
         final String fileName = outputDir + "/assembly" + intervalAndFastqs._1 + ".fastq";
-        try ( final OutputStream writer = new BufferedOutputStream(BucketUtils.createFile(fileName, pipelineOptions)) ) {
-            for ( final byte[] fastqBytes : fastqsArray ) {
-                writer.write(fastqBytes);
-            }
-        } catch ( final IOException ioe ) {
-            throw new GATKException("Can't write "+fileName, ioe);
-        }
-    }
-
-    /** Sure seems like this should be available in the standard Java library somewhere, but I can't find it. */
-    private static int compareByteArrays( final byte[] arr1, final byte[] arr2 ) {
-        final int len = Math.min(arr1.length, arr2.length);
-        for ( int idx = 0; idx != len; ++idx ) {
-            final int result = Integer.compare(arr1[idx] & 0xff, arr2[idx] & 0xff);
-            if ( result != 0 ) return result;
-        }
-        return Integer.compare(arr1.length, arr2.length);
+        SVFastqUtils.writeFastqFile(fileName, null, fastqsList);
     }
 
     /**
@@ -1347,7 +1314,7 @@ public final class FindBreakpointEvidenceSpark extends GATKSparkTool {
                 while (namesItr.hasNext()) {
                     final QNameAndInterval nameAndInterval = namesItr.next();
                     if (nameAndInterval.hashCode() == readNameHash && nameAndInterval.sameName(readNameBytes)) {
-                        if (fastqBytes == null) fastqBytes = fastqForRead(read).getBytes();
+                        if (fastqBytes == null) fastqBytes = SVFastqUtils.readToFastqRecord(read);
                         final int intervalId = nameAndInterval.getIntervalId();
                         if ( intervalReads[intervalId] == null ) {
                             intervalReads[intervalId] = new ArrayList<>(nReadsPerInterval);
@@ -1365,17 +1332,6 @@ public final class FindBreakpointEvidenceSpark extends GATKSparkTool {
                 }
             }
             return fastQRecords;
-        }
-
-        private String fastqForRead( final GATKRead read ) {
-            final String nameSuffix = read.isPaired() ? (read.isFirstOfPair() ? "/1" : "/2") : "";
-            //final String mappedLocation = read.isUnmapped() ? "*" : read.getContig()+":"+read.getStart();
-            return "@" + read.getName() + nameSuffix +
-                    // "|" + mappedLocation +
-                    "\n" +
-                    read.getBasesString() + "\n" +
-                    "+\n" +
-                    ReadUtils.getBaseQualityString(read)+"\n";
         }
     }
 }

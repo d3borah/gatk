@@ -4,6 +4,7 @@ import htsjdk.samtools.*;
 import htsjdk.samtools.util.CloserUtil;
 import org.broadinstitute.hellbender.CommandLineProgramTest;
 import org.broadinstitute.hellbender.exceptions.GATKException;
+import org.broadinstitute.hellbender.exceptions.UserException;
 import org.broadinstitute.hellbender.utils.test.SamAssertionUtils;
 import org.broadinstitute.hellbender.utils.read.mergealignment.BestMapqPrimaryAlignmentSelectionStrategy;
 import org.broadinstitute.hellbender.utils.read.mergealignment.SamAlignmentMerger;
@@ -1588,18 +1589,20 @@ public final class MergeBamAlignmentIntegrationTest extends CommandLineProgramTe
         };
     }
 
-    @Test
+    @Test(expectedExceptions = UserException.CommandLineException.class)
     public void testHelp() {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         PrintStream ps= new PrintStream(baos);
-        System.setErr(ps);
-        runCommandLine(new String[]{
-                "--help",
-        });
-        final String s = baos.toString();
-        String[] lines = s.split("\n");
-        for (int i = 0; i < lines.length; i++) {
-            Assert.assertFalse(lines[i].contains("READ2_ALIGNED_BAM (R2_ALIGNED) READ2_ALIGNED_BAM"), lines[i]); //Same option twice!
+        final PrintStream originalErr = System.err;
+        try {
+            System.setErr(ps);
+            //making sure that this blows up in a very specific way (UserException.CommandLineException) if we give help argument
+            //This exception is caught by Main.main
+            runCommandLine(new String[]{
+                    "--help",
+            });
+        } finally {
+            System.setErr(originalErr);
         }
     }
 }

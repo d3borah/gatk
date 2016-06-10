@@ -266,8 +266,7 @@ public final class CommandLineParser {
 
         //check if special short circuiting arguments are set
         if (isSpecialFlagSet(parsedArguments, SpecialArgumentsCollection.HELP_FULLNAME)) {
-            usage(messageStream, true);
-            return false;
+            throw new UserException.CommandLineException();//this will be caught to display usage help
         } else if (isSpecialFlagSet(parsedArguments, SpecialArgumentsCollection.VERSION_FULLNAME)) {
             messageStream.println(getVersion());
             return false;

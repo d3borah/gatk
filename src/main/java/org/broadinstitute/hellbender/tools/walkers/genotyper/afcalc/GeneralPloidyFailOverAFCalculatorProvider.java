@@ -9,7 +9,7 @@ import org.broadinstitute.hellbender.utils.Utils;
  *
  * @author Valentin Ruano-Rubio &lt;valentin@broadinstitute.org&gt;
  */
-public class GeneralPloidyFailOverAFCalculatorProvider extends AFCalculatorProvider {
+public final class GeneralPloidyFailOverAFCalculatorProvider extends AFCalculatorProvider {
 
     private final AFCalculator preferred;
     private final AFCalculatorImplementation preferredImplementation;
@@ -18,7 +18,7 @@ public class GeneralPloidyFailOverAFCalculatorProvider extends AFCalculatorProvi
     /**
      * Creates a new AF calculator provider given the genotyping arguments and logger reference.
      * @param genotypeArgs genotyping parameter collection.
-     * @throws IllegalStateException if {@code genotypeArgs} is {@code null}.
+     * @throws IllegalArgumentException if {@code genotypeArgs} is {@code null}.
      */
     public GeneralPloidyFailOverAFCalculatorProvider(final GenotypeCalculationArgumentCollection genotypeArgs) {
         Utils.nonNull(genotypeArgs);

@@ -1,6 +1,7 @@
 package org.broadinstitute.hellbender.tools.walkers.genotyper.afcalc;
 
 import org.broadinstitute.hellbender.tools.walkers.genotyper.GenotypeCalculationArgumentCollection;
+import org.broadinstitute.hellbender.utils.test.BaseTest;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -10,10 +11,13 @@ import org.testng.annotations.Test;
  *
  * @author Valentin Ruano-Rubio &lt;valentin@broadinstitute.org&gt;
  */
-public class GeneralPloidyFailOverAFCalculatorProviderUnitTest {
+public class GeneralPloidyFailOverAFCalculatorProviderUnitTest extends BaseTest {
 
-    @Test(dataProvider="nonThreadSafeConstructorsData")
-    public void testNonThreadSafeConstructors(final int ploidy, final int maxAltAlleles) {
+    private final static int[] PLOIDIES = new int[] { AFCalculatorImplementation.UNBOUND_PLOIDY,1,2,3,4,10 };
+    private final static int[] MAX_ALT_ALLELES = new int[] { AFCalculatorImplementation.UNBOUND_ALTERNATIVE_ALLELE_COUNT,1,2,3,4,10};
+
+    @Test(dataProvider= "getMatrixOfPlodiesAndMaxAltAlleles")
+    public void testAFCalculatorProvider(final int ploidy, final int maxAltAlleles) {
         final GenotypeCalculationArgumentCollection args = new GenotypeCalculationArgumentCollection();
         args.MAX_ALTERNATE_ALLELES = maxAltAlleles;
         args.samplePloidy = ploidy;
@@ -39,11 +43,8 @@ public class GeneralPloidyFailOverAFCalculatorProviderUnitTest {
         }
     }
 
-    private final static int[] PLOIDIES = new int[] { AFCalculatorImplementation.UNBOUND_PLOIDY,1,2,3,4,10 };
-    private final static int[] MAX_ALT_ALLELES = new int[] { AFCalculatorImplementation.UNBOUND_ALTERNATIVE_ALLELE_COUNT,1,2,3,4,10};
-
-    @DataProvider(name="nonThreadSafeConstructorsData")
-    public Object[][] nonThreadSafeConstructorsData() {
+    @DataProvider(name="getMatrixOfPlodiesAndMaxAltAlleles")
+    public Object[][] getMatrixOfPlodiesAndMaxAltAlleles() {
         final Object[][] result = new Object[PLOIDIES.length * MAX_ALT_ALLELES.length][];
         int idx = 0;
         for (final int PLOIDY : PLOIDIES) {

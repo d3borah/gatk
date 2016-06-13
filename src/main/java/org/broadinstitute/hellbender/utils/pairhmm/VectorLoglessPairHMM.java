@@ -33,8 +33,9 @@ public final class VectorLoglessPairHMM extends LoglessPairHMM {
     private final Map<Haplotype, Integer> haplotypeToHaplotypeListIdxMap = new LinkedHashMap<>();
     private HaplotypeDataHolder[] mHaplotypeDataArray;
 
-    public VectorLoglessPairHMM(PairHMMNativeArguments args) {
-        final boolean isSupported = new IntelPairHmm().load();
+    public VectorLoglessPairHMM(PairHMMNativeArguments args) throws UserException.HardwareFeatureException {
+        // TODO: connect GATK temp directory
+        final boolean isSupported = new IntelPairHmm().load(null);
 
         if (!isSupported) {
             throw new UserException.HardwareFeatureException("Machine does not support AVX PairHMM.");

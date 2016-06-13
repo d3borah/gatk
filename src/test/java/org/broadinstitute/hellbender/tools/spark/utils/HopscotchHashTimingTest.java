@@ -20,7 +20,7 @@ public final class HopscotchHashTimingTest {
     }
 
     private static final int N_TRIALS = 5;
-    private static final int N_VALUES = 20000000;
+    private static final int N_VALUES = 25000000;
 
     public static void main( final String[] args ) {
 

@@ -10,7 +10,8 @@ import java.util.*;
 
 /**
  * Hash set implementation that provides low memory overhead with a high load factor by using the hopscotch algorithm.
- * This is usually a little slower than the JDK's HashSet (neglecting GC time), but it uses much less memory.
+ * Retrieval times are usually a little slower than for the JDK's HashSet (neglecting GC time), but this class uses much
+ * less memory.  Insertion and deletion times are typically a little better than HashSet.
  * It's probably a nice choice for very large collections.
  *
  * You can make it pretty much equally fast as HashSet by replacing the prime-number table sizing with power-of-2 table
@@ -255,7 +256,9 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
     private int hashToIndex( final int hashVal ) {
         // For power-of-2 table sizes substitute this line
         // return (SPREADER*hashVal)&(capacity-1);
-        return Math.floorMod(SPREADER*hashVal, capacity);
+        int result = (SPREADER * hashVal) % capacity;
+        if ( result < 0 ) result += capacity;
+        return result;
     }
 
     private int insertIntoChain( final int bucketIndex, final int endOfChainIndex ) {
@@ -370,6 +373,7 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
             }
             offsetToEmpty -= 1;
         }
+        // this happens now and then, but is usually caught and remedied by a resize
         throw new IllegalStateException("Hopscotching failed at load factor "+(1.*size/capacity));
     }
 
@@ -465,6 +469,7 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
                 if ( legalSizes[idx] >= capacity ) return legalSizes[idx + 1];
             }
         }
+        // this only happens when we're already at max size (a little less than 1<<31)
         throw new IllegalStateException("Unable to increase capacity.");
     }
 

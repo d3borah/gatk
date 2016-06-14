@@ -455,6 +455,22 @@ public final class RunSGAViaProcessBuilderOnSpark extends GATKSparkTool {
             public String toString(){
                 return id;
             }
+
+            @Override
+            public boolean equals(final Object o) {
+                if (this == o) return true;
+                if (o == null || getClass() != o.getClass()) return false;
+
+                final ContigID contigID = (ContigID) o;
+
+                return id != null ? id.equals(contigID.id) : contigID.id == null;
+
+            }
+
+            @Override
+            public int hashCode() {
+                return id != null ? id.hashCode() : 0;
+            }
         }
 
         private final List<Tuple2<ContigID, ContigSequence>> contents;

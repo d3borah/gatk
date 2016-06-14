@@ -4,7 +4,9 @@ import com.github.lindenb.jbwa.jni.AlnRgn;
 import com.github.lindenb.jbwa.jni.BwaIndex;
 import com.github.lindenb.jbwa.jni.BwaMem;
 import com.github.lindenb.jbwa.jni.ShortRead;
+import com.sun.xml.internal.ws.util.Pool;
 import htsjdk.samtools.Cigar;
+import htsjdk.samtools.CigarOperator;
 import htsjdk.samtools.TextCigarCodec;
 import org.broadinstitute.hellbender.exceptions.GATKException;
 import org.broadinstitute.hellbender.utils.SimpleInterval;
@@ -14,7 +16,10 @@ import scala.Tuple2;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class ContigAligner {
 
@@ -22,8 +27,8 @@ public class ContigAligner {
         BWANativeLibrary.load();
     }
 
-    public List<AssembledBreakpoint> alignContigs (RunSGAViaProcessBuilderOnSpark.ContigsCollection contigsCollection, File referenceFile) {
-        List<AssembledBreakpoint> assembledBreakpoints = new ArrayList<>();
+    public List<AssembledBreakpoint> alignContigs (final RunSGAViaProcessBuilderOnSpark.ContigsCollection contigsCollection, final File referenceFile) {
+        final List<AssembledBreakpoint> assembledBreakpoints = new ArrayList<>();
 
         try {
             final BwaIndex index;
@@ -38,9 +43,13 @@ public class ContigAligner {
 
                     // todo: parse cigar for internal indels
                     if (alnRgns.length > 1) {
-                        // todo: order these by location in the query sequence? Does BWA do this?
-                        // todo: how does BWA order secondary alignments? Should I assume they are all at the end?
-                        for (int i = 0; i < alnRgns.length; i++) {
+
+                        final List<AlignmentRegion> alignmentRegionList = Arrays.stream(alnRgns)
+                                .map(AlignmentRegion::new)
+                                .sorted(Comparator.comparing(a -> a.startInContig))
+                                .collect(Collectors.toList());
+
+                        for (int i = 0; i < alignmentRegionList.size(); i++) {
                             if (alnRgns[i].getSecondary() != -1) {
                                 break;
                             }
@@ -48,24 +57,14 @@ public class ContigAligner {
                                 final AssembledBreakpoint assembledBreakpoint = new AssembledBreakpoint();
                                 assembledBreakpoint.contigId = contigId;
 
-                                final AlnRgn alnRgn1 = alnRgns[i-1];
-                                final Cigar cigar1 = TextCigarCodec.decode(alnRgn1.getCigar());
-                                assembledBreakpoint.region1 = new AlignmentRegion();
-                                final int pos1 = (int) alnRgn1.getPos() + 1;
-                                assembledBreakpoint.region1.interval = new SimpleInterval(alnRgn1.getChrom(), pos1, pos1 + cigar1.getReferenceLength());
-                                assembledBreakpoint.region1.forwardStrand = ('+' == alnRgn1.getStrand());
-                                assembledBreakpoint.region1.mqual = alnRgn1.getMQual();
+                                assembledBreakpoint.region1 = alignmentRegionList.get(i-1);
+                                assembledBreakpoint.region2 = alignmentRegionList.get(i);
 
-                                final AlnRgn alnRgn2 = alnRgns[i];
-                                final Cigar cigar2 = TextCigarCodec.decode(alnRgn2.getCigar());
-                                assembledBreakpoint.region2 = new AlignmentRegion();
-                                final int pos2 = (int) alnRgn2.getPos() + 1;
-                                assembledBreakpoint.region2.interval = new SimpleInterval(alnRgn2.getChrom(), pos2, pos2 + cigar2.getReferenceLength());
-                                assembledBreakpoint.region2.forwardStrand = ('+' == alnRgn2.getStrand());
-                                assembledBreakpoint.region2.mqual = alnRgn2.getMQual();
-
-                                //todo: add inserted sequence and microhomology detection
                                 assembledBreakpoint.homology = "";
+                                if (assembledBreakpoint.region1.endInContig >= assembledBreakpoint.region2.startInContig) {
+                                    assembledBreakpoint.homology = getSequence(contigsCollection, contigId, assembledBreakpoint.region2.startInContig, assembledBreakpoint.region1.endInContig);
+                                }
+                                //todo: add inserted sequence
                                 assembledBreakpoint.insertedSequence = "";
 
                                 assembledBreakpoints.add(assembledBreakpoint);
@@ -76,17 +75,26 @@ public class ContigAligner {
             } finally {
                 bwaMem.dispose();
             }
-        } catch (IOException e) {
+        } catch (final IOException e) {
             throw new GATKException("could not execute BWA");
         }
 
         return assembledBreakpoints;
     }
 
+    private String getSequence(final RunSGAViaProcessBuilderOnSpark.ContigsCollection contigsCollection, final String contigId, final int startInContig, final int endInContig) {
+        for (final Tuple2<RunSGAViaProcessBuilderOnSpark.ContigsCollection.ContigID, RunSGAViaProcessBuilderOnSpark.ContigsCollection.ContigSequence> contig : contigsCollection.getContents()) {
+            if (contig._1.equals(new RunSGAViaProcessBuilderOnSpark.ContigsCollection.ContigID(contigId))) {
+                final String sequence = contig._2.toString();
+                return sequence.substring(startInContig, endInContig);
+            }
+        }
+        throw new GATKException("Could not find contig " + contigId);
+    }
+
     private AlnRgn[] bwaAlignSequence(final BwaMem bwaMem, final String contigId, final byte[] sequence) throws IOException {
         final ShortRead contigShortRead = new ShortRead(contigId, sequence, qualSequence(sequence.length));
-        AlnRgn[] alignmentRegions = bwaMem.align(contigShortRead);
-        return alignmentRegions;
+        return bwaMem.align(contigShortRead);
     }
 
     private byte[] qualSequence(final int length) {
@@ -106,8 +114,51 @@ public class ContigAligner {
     }
 
     static class AlignmentRegion {
-        boolean forwardStrand;
-        SimpleInterval interval;
-        int mqual;
+
+        final Cigar cigar;
+        final boolean forwardStrand;
+        final SimpleInterval interval;
+        final int mqual;
+        final int startInContig;
+        final int endInContig;
+        final int contigLength;
+
+
+        public AlignmentRegion(final AlnRgn alnRgn) {
+            this.forwardStrand = alnRgn.getStrand() == '+';
+            this.cigar = TextCigarCodec.decode(alnRgn.getCigar());
+            this.interval = new SimpleInterval(alnRgn.getChrom(), (int) alnRgn.getPos() + 1, (int) (alnRgn.getPos() + 1 + cigar.getReferenceLength()));
+            this.mqual = alnRgn.getMQual();
+            this.contigLength = cigar.getReadLength();
+            this.startInContig = startOfAlignmentInContig();
+            this.endInContig = endOfAlignmentInContig();
+        }
+
+        private int startOfAlignmentInContig() {
+            return getClippedBases(forwardStrand);
+        }
+
+        private int endOfAlignmentInContig() {
+            return contigLength - getClippedBases(!forwardStrand);
+        }
+
+        private int getClippedBases(final boolean forwardStrand) {
+            int posInContig = 0;
+            if (forwardStrand) {
+                int i = 0;
+                while (cigar.getCigarElement(i).getOperator() == CigarOperator.H || cigar.getCigarElement(i).getOperator() == CigarOperator.S) {
+                    posInContig += cigar.getCigarElement(i).getLength();
+                    i = i + 1;
+                }
+            } else {
+                int i = cigar.getCigarElements().size() - 1;
+                while (cigar.getCigarElement(i).getOperator() == CigarOperator.H || cigar.getCigarElement(i).getOperator() == CigarOperator.S) {
+                    posInContig += cigar.getCigarElement(i).getLength();
+                    i = i - 1;
+                }
+            }
+            return posInContig;
+        }
+
     }
 }

@@ -74,7 +74,7 @@ public class ContigAlignerTest extends BaseTest {
         Assert.assertFalse(breakpoint1Region2.forwardStrand);
         Assert.assertEquals(breakpoint1Region2.mqual, 60);
 
-//        Assert.assertEquals("GATCCC", breakpoint1.homology);
+        Assert.assertEquals(breakpoint1.homology, "GGATCCA");
         Assert.assertEquals(breakpoint1.insertedSequence, "");
 
         final ContigAligner.AssembledBreakpoint breakpoint2 = assembledBreakpoints.get(1);
@@ -91,7 +91,7 @@ public class ContigAlignerTest extends BaseTest {
         Assert.assertTrue(breakpoint2Region2.forwardStrand);
         Assert.assertEquals(breakpoint2Region2.mqual, 60);
 
-//        Assert.assertEquals("GATCCC", breakpoint2.homology);
+        Assert.assertEquals("", breakpoint2.homology);
         Assert.assertEquals(breakpoint2.insertedSequence, "");
 
 

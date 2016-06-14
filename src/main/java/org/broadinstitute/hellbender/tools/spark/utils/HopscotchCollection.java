@@ -7,25 +7,28 @@ import com.esotericsoftware.kryo.io.Output;
 import com.google.common.annotations.VisibleForTesting;
 
 import java.util.*;
+import java.util.function.BiPredicate;
+import java.util.function.Function;
 
 /**
- * Hash set implementation that provides low memory overhead with a high load factor by using the hopscotch algorithm.
+ * Multiset implementation that provides low memory overhead with a high load factor by using the hopscotch algorithm.
  * Retrieval times are usually a little slower than for the JDK's HashSet (neglecting GC time), but this class uses much
  * less memory.  Insertion and deletion times are typically a little better than HashSet.
  * It's probably a nice choice for very large collections.
  *
- * You can make it pretty much equally fast as HashSet by replacing the prime-number table sizing with power-of-2 table
- * sizing, but then it'll behave just as badly as HashSet given poor hashCode implementations.
+ * You can make it faster than HashSet by replacing the prime-number table sizing with power-of-2 table
+ * sizing, but then it'll behave just as badly as HashSet given poor hashCode implementations.  (The extra time in
+ * retrieval is mostly due to having to take the hash value mod the capacity, rather than masking off a few bits.)
  *
  * Very rarely, and usually when your element type's hashCode implementation is poor, the hopscotching will fail even
- * after the table is resized to be 1.4 times larger.  In this case an IllegalStateException will be thrown.  To be
- * honest, I haven't ever seen it happen with this version of the code, but it might.  If it happens to you, you might
- * want to take a look at your hashCode implementation to make certain it has good avalanche characteristics.  The ones
- * you see recommended everywhere, that add in the final piece of state, don't have good avalanche.  We try to take care
- * of this common defect with the SPREADER, but that's not a perfect solution.
+ * after the table is (automatically) resized to be 1.4 times larger.  In this case an IllegalStateException will be
+ * thrown.  To be honest, I haven't ever seen it happen with this version of the code, but it might.  If it happens to
+ * you, you might want to take a look at your T's hashCode implementation to make certain it has good avalanche
+ * characteristics.  The ones you see recommended everywhere that add in the final piece of state, don't have good
+ * avalanche.  We try to take care of this common defect with the SPREADER, but that's not a perfect solution.
  */
-@DefaultSerializer(HopscotchHashSet.Serializer.class)
-public final class HopscotchHashSet<T> extends AbstractSet<T> {
+@DefaultSerializer(HopscotchCollection.Serializer.class)
+public class HopscotchCollection<T> extends AbstractCollection<T> {
     // For power-of-2 table sizes add this line
     //private static final int maxCapacity = Integer.MAX_VALUE/2 + 1;
 
@@ -44,6 +47,7 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
     private byte[] status;
 
     private static final double LOAD_FACTOR = .85;
+    private static final int NO_ELEMENT_INDEX = -1;
 
     // largest prime numbers less than each half power of 2 from 2^8 to 2^31
     @VisibleForTesting static final int[] legalSizes = {
@@ -54,9 +58,12 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
     };
     private static final int SPREADER = 241;
 
-    /** make a hashSet for a specified capacity (or good guess) */
+    /** make a small HopscotchCollection */
+    public HopscotchCollection() { this(12000); }
+
+    /** make a HopscotchCollection for a specified capacity (or good guess) */
     @SuppressWarnings("unchecked")
-    public HopscotchHashSet( final int capacity ) {
+    public HopscotchCollection( final int capacity ) {
         this.capacity = computeCapacity(capacity);
         this.size = 0;
         // Not unsafe, because the remainder of the API allows only elements known to be T's to be assigned to buckets.
@@ -64,16 +71,14 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
         this.status = new byte[this.capacity];
     }
 
-    /** make a hashSet from a collection */
-    public HopscotchHashSet( final Collection<T> collection ) {
+    /** make a HopscotchCollection from a collection */
+    public HopscotchCollection( final Collection<? extends T> collection ) {
         this(collection.size());
         addAll(collection);
     }
 
     @SuppressWarnings("unchecked")
-    private HopscotchHashSet( final Kryo kryo, final Input input ) {
-        final boolean oldReferencesState = kryo.getReferences();
-        kryo.setReferences(false);
+    private HopscotchCollection( final Kryo kryo, final Input input ) {
         capacity = input.readInt();
         size = 0;
         buckets = (T[])new Object[capacity];
@@ -82,19 +87,13 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
         while ( size-- > 0 ) {
             add((T)kryo.readClassAndObject(input));
         }
-        kryo.setReferences(oldReferencesState);
     }
 
     private void serialize( final Kryo kryo, final Output output ) {
-        final boolean oldReferencesState = kryo.getReferences();
-        // this is actually screwy -- what we need to do is to turn off just the top-level reference resolution as
-        // if we were using the ObjectOutputStream's writeUnshared method.
-        // we're a set, after all, and each object will be unique.  but we don't know what's going on inside
-        // the objects in the set -- they might well have shared references to other objects.
-        // but with kryo there doesn't seem to be a way to do this -- you have to turn off all reference resolution.
-        kryo.setReferences(false);
         output.writeInt(capacity);
         output.writeInt(size);
+
+        // write the chain heads, and then the squatters
         int count = 0;
         for ( int idx = 0; idx != capacity; ++idx ) {
             if ( isChainHead(idx) ) {
@@ -109,7 +108,6 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
                 count += 1;
             }
         }
-        kryo.setReferences(oldReferencesState);
 
         if ( count != size ) {
             throw new IllegalStateException("Failed to serialize the expected number of objects: expected="+size+" actual="+count+".");
@@ -117,97 +115,16 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
     }
 
     @Override
-    public boolean contains( final Object value ) {
-        if ( value == null ) return false;
-        int bucketIndex = hashToIndex(value.hashCode());
-        if ( !isChainHead(bucketIndex) ) return false;
-        if ( buckets[bucketIndex].equals(value) ) return true;
-        int offset;
-        while ( (offset = getOffset(bucketIndex)) != 0 ) {
-            bucketIndex = getIndex(bucketIndex, offset);
-            if ( buckets[bucketIndex].equals(value) ) return true;
-        }
-        return false;
-    }
-
-    public int capacity() { return capacity; }
-
-    @Override
-    public int size() { return size; }
-
-    @Override
-    public Iterator<T> iterator() { return new CompleteIterator(); }
-
-    /**
-     * This special iterator type allows you to traverse individual hash buckets.
-     */
-    public Iterator<T> bucketIterator( final int bucketIndex ) { return new BucketIterator(bucketIndex); }
-
-    /**
-     * This special iterator allows you to traverse the hash bucket for a particular key.
-     * This lets you implement a multi-map on this collection by using a <K,V>-ish element type having a hashCode that
-     * depends only on K.
-     * You supply the key as an Object, because we don't know what your real key type is.
-     */
-    public Iterator<T> bucketIterator( final Object obj ) { return new BucketIterator(obj); }
-
-    @Override
     public boolean add( final T entry ) {
         if ( entry == null ) throw new UnsupportedOperationException("This collection cannot contain null.");
         if ( size == capacity ) resize();
+        final BiPredicate<T, T> collision = entryCollides();
         try {
-            return insert(entry) == entry;
+            return insert(entry, collision);
         } catch ( final IllegalStateException ise ) {
             resize();
-            return insert(entry) == entry;
+            return insert(entry, collision);
         }
-    }
-
-    public T put( final T entry ) {
-        if ( entry == null ) throw new UnsupportedOperationException("This collection cannot contain null.");
-        if ( size == capacity ) resize();
-        try {
-            return insert(entry);
-        } catch ( final IllegalStateException ise ) {
-            resize();
-            return insert(entry);
-        }
-    }
-
-    @Override
-    public boolean remove( final Object entry ) {
-        if ( entry == null ) return false;
-        int bucketIndex = hashToIndex(entry.hashCode());
-        if ( buckets[bucketIndex] == null || !isChainHead(bucketIndex) ) return false;
-        int predecessorIndex = -1;
-        while ( true ) {
-            final int offset = getOffset(bucketIndex);
-            if ( buckets[bucketIndex].equals(entry) ) {
-                if ( offset == 0 ) {
-                    buckets[bucketIndex] = null;
-                    status[bucketIndex] = 0;
-                    if ( predecessorIndex != -1 ) status[predecessorIndex] -= getOffset(predecessorIndex);
-                } else {
-                    // move the item at the end of the chain into the hole we're creating by deleting this entry
-                    int prevIndex = bucketIndex;
-                    int nextIndex = getIndex(prevIndex, offset);
-                    int offsetToNext;
-                    while ( (offsetToNext = getOffset(nextIndex)) != 0 ) {
-                        prevIndex = nextIndex;
-                        nextIndex = getIndex(nextIndex, offsetToNext);
-                    }
-                    buckets[bucketIndex] = buckets[nextIndex];
-                    buckets[nextIndex] = null;
-                    status[prevIndex] -= getOffset(prevIndex);
-                }
-                size -= 1;
-                return true;
-            }
-            if ( offset == 0 ) break;
-            predecessorIndex = bucketIndex;
-            bucketIndex = getIndex(bucketIndex, offset);
-        }
-        return false;
     }
 
     @Override
@@ -219,8 +136,108 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
         size = 0;
     }
 
-    private T insert( final T entry ) {
-        final int bucketIndex = hashToIndex(entry.hashCode());
+    /** maximum number of elements that can be held without resizing. (but we may have to resize earlier.) */
+    public int capacity() { return capacity; }
+
+    @Override
+    public boolean contains( final Object key ) {
+        int bucketIndex = hashToIndex(key);
+        if ( !isChainHead(bucketIndex) ) return false;
+        if ( equivalent(buckets[bucketIndex], key) ) return true;
+        int offset;
+        while ( (offset = getOffset(bucketIndex)) != 0 ) {
+            bucketIndex = getIndex(bucketIndex, offset);
+            if ( equivalent(buckets[bucketIndex], key) ) return true;
+        }
+        return false;
+    }
+
+    /** find an entry equivalent to the key, or return null */
+    public T find( final Object key ) {
+        int bucketIndex = hashToIndex(key);
+        if ( !isChainHead(bucketIndex) ) return null;
+        T entry = buckets[bucketIndex];
+        if ( equivalent(entry, key) ) return entry;
+        int offset;
+        while ( (offset = getOffset(bucketIndex)) != 0 ) {
+            bucketIndex = getIndex(bucketIndex, offset);
+            entry = buckets[bucketIndex];
+            if ( equivalent(entry, key) ) return entry;
+        }
+        return null;
+    }
+
+    /** get an iterator over each of the elements equivalent to the key */
+    public Iterator<T> findEach( final Object key ) {
+        return new ElementIterator(key);
+    }
+
+    @Override
+    public boolean isEmpty() { return size == 0; }
+
+    @Override
+    public Iterator<T> iterator() { return new CompleteIterator(); }
+
+    @Override
+    public boolean remove( final Object key ) {
+        int bucketIndex = hashToIndex(key);
+        if ( buckets[bucketIndex] == null || !isChainHead(bucketIndex) ) return false;
+        int predecessorIndex = NO_ELEMENT_INDEX;
+        while ( !equivalent(buckets[bucketIndex], key) ) {
+            final int offset = getOffset(bucketIndex);
+            if ( offset == 0 ) return false;
+            predecessorIndex = bucketIndex;
+            bucketIndex = getIndex(bucketIndex, offset);
+        }
+        removeAtIndex(bucketIndex, predecessorIndex);
+        return true;
+    }
+
+    /** remove each of the elements equivalent to the key */
+    public boolean removeEach( final Object key ) {
+        boolean result = false;
+        final Iterator<T> elementItr = new ElementIterator(key);
+        while ( elementItr.hasNext() ) {
+            elementItr.next();
+            elementItr.remove();
+            result = true;
+        }
+        return result;
+    }
+
+    /** unlike the AbstractCollection implementation, this one iterates over the supplied collection */
+    @Override
+    public boolean removeAll( final Collection<?> collection ) {
+        boolean result = false;
+        for ( final Object entry : collection ) {
+            if ( removeEach(entry) ) result = true;
+        }
+        return result;
+    }
+
+    @Override
+    public int size() { return size; }
+
+
+    protected BiPredicate<T, T> entryCollides() { return (t1, t2) -> false; }
+    protected Function<T, Object> toKey() { return i -> i; }
+
+    // -------- internal methods ----------
+
+    private boolean equivalent( final T entry, final Object key ) {
+        return Objects.equals(toKey().apply(entry), key);
+    }
+
+    private int hashToIndex( final Object entry ) {
+        // For power-of-2 table sizes substitute this line
+        // return (SPREADER*hashVal)&(capacity-1);
+        int result = entry == null ? 0 : ((SPREADER * entry.hashCode()) % capacity);
+        if ( result < 0 ) result += capacity;
+        return result;
+    }
+
+    private boolean insert( final T entry, final BiPredicate<T, T> collision ) {
+        final int bucketIndex = hashToIndex(toKey().apply(entry));
 
         // if there's a squatter where the new entry should go, move it elsewhere and put the entry there
         if ( buckets[bucketIndex] != null && !isChainHead(bucketIndex) ) evict(bucketIndex);
@@ -230,15 +247,16 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
             buckets[bucketIndex] = entry;
             status[bucketIndex] = Byte.MIN_VALUE;
             size += 1;
-            return entry;
+            return true;
         }
 
-        // make sure the entry isn't already present
+        // walk to end of chain
+        // along the way, make sure the entry isn't already present if necessary
         int endOfChainIndex = bucketIndex;
         while ( true ) {
             // if entry is already in the set
             final T tableEntry = buckets[endOfChainIndex];
-            if ( tableEntry.equals(entry) ) return tableEntry;
+            if ( collision.test(tableEntry, entry) ) return false;
             final int offset = getOffset(endOfChainIndex);
             if ( offset == 0 ) break;
             endOfChainIndex = getIndex(endOfChainIndex, offset);
@@ -250,15 +268,31 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
         // put the new entry into the empty bucket
         buckets[emptyBucketIndex] = entry;
         size += 1;
-        return entry;
+        return true;
     }
 
-    private int hashToIndex( final int hashVal ) {
-        // For power-of-2 table sizes substitute this line
-        // return (SPREADER*hashVal)&(capacity-1);
-        int result = (SPREADER * hashVal) % capacity;
-        if ( result < 0 ) result += capacity;
-        return result;
+    private void removeAtIndex( final int bucketIndex, final int predecessorIndex ) {
+        final int offset = getOffset(bucketIndex);
+        if ( offset == 0 ) { // if end of chain
+            buckets[bucketIndex] = null;
+            status[bucketIndex] = 0;
+            if ( predecessorIndex != NO_ELEMENT_INDEX ) { // fix up offset of previous element in chain if there is one
+                status[predecessorIndex] -= getOffset(predecessorIndex);
+            }
+        } else {
+            // move the item at the end of the chain into the hole we're creating by deleting this entry
+            int prevIndex = bucketIndex;
+            int nextIndex = getIndex(prevIndex, offset);
+            int offsetToNext;
+            while ( (offsetToNext = getOffset(nextIndex)) != 0 ) {
+                prevIndex = nextIndex;
+                nextIndex = getIndex(nextIndex, offsetToNext);
+            }
+            buckets[bucketIndex] = buckets[nextIndex];
+            buckets[nextIndex] = null;
+            status[prevIndex] -= getOffset(prevIndex);
+        }
+        size -= 1;
     }
 
     private int insertIntoChain( final int bucketIndex, final int endOfChainIndex ) {
@@ -301,7 +335,7 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
     }
 
     private void evict( final int bucketToEvictIndex ) {
-        final int bucketIndex = hashToIndex(buckets[bucketToEvictIndex].hashCode());
+        final int bucketIndex = hashToIndex(toKey().apply(buckets[bucketToEvictIndex]));
         final int offsetToEvictee = getIndexDiff(bucketIndex, bucketToEvictIndex);
         int emptyBucketIndex = findEmptyBucket(bucketIndex);
         int fromIndex = bucketIndex;
@@ -419,7 +453,7 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
             int idx = 0;
             do {
                 final T entry = oldBuckets[idx];
-                if ( entry != null ) insert(entry);
+                if ( entry != null ) insert(entry, (t1, t2) -> false );
             }
             while ( (idx = (idx+127)%oldCapacity) != 0 );
         } catch ( final IllegalStateException ise ) {
@@ -473,24 +507,55 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
         throw new IllegalStateException("Unable to increase capacity.");
     }
 
-    private final class BucketIterator implements Iterator<T> {
-        private int bucketIndex;
+    private final class ElementIterator implements Iterator<T> {
+        private final Object key;
+        private int currentIndex;
+        private int prevIndex;
+        private int removeIndex;
+        private int removePrevIndex;
 
-        BucketIterator( final Object obj ) { this(hashToIndex(obj.hashCode())); }
-
-        BucketIterator( final int bucketIndex ) {
-            this.bucketIndex = isChainHead(bucketIndex) ? bucketIndex : buckets.length;
+        ElementIterator( final Object key ) {
+            this.key = key;
+            currentIndex = prevIndex = removeIndex = removePrevIndex = NO_ELEMENT_INDEX;
+            int bucketIndex = hashToIndex(key);
+            if ( !isChainHead(bucketIndex) ) return;
+            while ( !equivalent(buckets[bucketIndex], key) ) {
+                prevIndex = bucketIndex;
+                final int offset = getOffset(bucketIndex);
+                if ( offset == 0 ) return;
+                bucketIndex = getIndex(bucketIndex, offset);
+            }
+            currentIndex = bucketIndex;
         }
 
-        @Override public boolean hasNext() { return bucketIndex != buckets.length; }
+        @Override
+        public boolean hasNext() { return currentIndex != NO_ELEMENT_INDEX; }
 
-        @Override public T next() {
-            if ( bucketIndex == buckets.length ) throw new NoSuchElementException("HopscotchHashSet iterator is exhausted.");
-            final T result = buckets[bucketIndex];
-            if ( result == null ) throw new IllegalStateException("Unexpected null value during iteration.");
-            final int offset = getOffset(bucketIndex);
-            bucketIndex = offset != 0 ? getIndex(bucketIndex, offset) : buckets.length;
+        @Override
+        public T next() {
+            if ( !hasNext() ) throw new NoSuchElementException("HopscotchCollection.ElementIterator is exhausted.");
+            final T result = buckets[currentIndex];
+            removeIndex = currentIndex;
+            removePrevIndex = prevIndex;
+            do {
+                final int offset = getOffset(currentIndex);
+                if ( offset == 0 ) {
+                    currentIndex = NO_ELEMENT_INDEX;
+                    break;
+                }
+                prevIndex = currentIndex;
+                currentIndex = getIndex(currentIndex, offset);
+            }
+            while ( !equivalent(buckets[currentIndex], key) );
             return result;
+        }
+
+        @Override
+        public void remove() {
+            if ( removeIndex == NO_ELEMENT_INDEX ) {
+                throw new IllegalStateException("HopscotchCollection.ElementIterator remove without next.");
+            }
+            removeAtIndex(removeIndex, removePrevIndex);
         }
     }
 
@@ -501,63 +566,81 @@ public final class HopscotchHashSet<T> extends AbstractSet<T> {
         //  currentElementIndex points to the element that the next method will return.
         //    It is always primed and ready to go until iteration is complete.
         //    When iteration is complete its value should be ignored (it's not set to anything in particular).
-        //  previousElementIndex is set by calling next.  It is set to the invalid value -1 following a call to remove,
+        //  previousElementIndex is set by calling next.  It is set to the invalid value following a call to remove,
         //    as well as at the beginning (before the first call to next) of iteration.  It remains valid when iteration
         //    is complete, unless and until remove is called.
         private int bucketHeadIndex;
-        private int currentElementIndex;
-        private int previousElementIndex;
+        private int currentIndex;
+        private int prevIndex;
+        private int removeIndex;
+        private int removePrevIndex;
 
-        CompleteIterator() { bucketHeadIndex = previousElementIndex = -1; nextBucketHead(); }
-
-        @Override public boolean hasNext() { return bucketHeadIndex < buckets.length; }
-
-        @Override public T next() {
-            if ( !hasNext() ) throw new NoSuchElementException("Iterator exhausted.");
-
-            previousElementIndex = currentElementIndex;
-
-            final int offset = getOffset(currentElementIndex);
-            // if we're at the end of a chain, advance to the next bucket, otherwise step to the next item in the chain.
-            if ( offset == 0 ) nextBucketHead();
-            else currentElementIndex = getIndex(currentElementIndex, offset);
-
-            return buckets[previousElementIndex];
+        CompleteIterator() {
+            bucketHeadIndex = prevIndex = removeIndex = removePrevIndex = NO_ELEMENT_INDEX;
+            nextBucketHead();
         }
 
-        @Override public void remove() {
-            if ( previousElementIndex < 0 ) throw new IllegalStateException("Remove without next.");
+        @Override
+        public boolean hasNext() { return bucketHeadIndex != NO_ELEMENT_INDEX; }
 
-            HopscotchHashSet.this.remove(buckets[previousElementIndex]);
+        @Override
+        public T next() {
+            if ( !hasNext() ) throw new NoSuchElementException("Iterator exhausted.");
+
+            removeIndex = currentIndex;
+            removePrevIndex = prevIndex;
+
+            final int offset = getOffset(currentIndex);
+            // if we're at the end of a chain, advance to the next bucket
+            if ( offset == 0 ) nextBucketHead();
+            else { // otherwise step to the next item in the chain
+                prevIndex = currentIndex;
+                currentIndex = getIndex(currentIndex, offset);
+            }
+
+            return buckets[removeIndex];
+        }
+
+        @Override
+        public void remove() {
+            if ( removeIndex == NO_ELEMENT_INDEX ) throw new IllegalStateException("Remove without next.");
+
+            removeAtIndex(removeIndex, removePrevIndex);
 
             // If we haven't deleted the end of a chain, we'll now have an unseen element under previousElementIndex.
             // So we need to back up and let the user know about it at the next call to the next method.  If we
             // have deleted an end of chain, then the bucket will be empty and no adjustment needs to be made.
-            if ( buckets[previousElementIndex] != null ) currentElementIndex = previousElementIndex;
+            if ( buckets[removeIndex] != null ) {
+                currentIndex = removeIndex;
+                prevIndex = removePrevIndex;
+            }
 
             // Set state to "invalid to call remove again".
-            previousElementIndex = -1;
+            removeIndex = NO_ELEMENT_INDEX;
         }
 
         private void nextBucketHead() {
             while ( ++bucketHeadIndex < buckets.length ) {
                 if ( isChainHead(bucketHeadIndex) ) {
-                    currentElementIndex = bucketHeadIndex;
+                    currentIndex = bucketHeadIndex;
+                    prevIndex = NO_ELEMENT_INDEX;
                     return;
                 }
             }
+            bucketHeadIndex = NO_ELEMENT_INDEX;
         }
     }
 
-    public static final class Serializer<T> extends com.esotericsoftware.kryo.Serializer<HopscotchHashSet<T>> {
+    public static final class Serializer<T> extends com.esotericsoftware.kryo.Serializer<HopscotchCollection<T>> {
         @Override
-        public void write( final Kryo kryo, final Output output, final HopscotchHashSet<T> hopscotchHashSet ) {
-            hopscotchHashSet.serialize(kryo, output);
+        public void write( final Kryo kryo, final Output output, final HopscotchCollection<T> hopscotchCollection ) {
+            hopscotchCollection.serialize(kryo, output);
         }
 
         @Override
-        public HopscotchHashSet<T> read( final Kryo kryo, final Input input, final Class<HopscotchHashSet<T>> klass ) {
-            return new HopscotchHashSet<>(kryo, input);
+        public HopscotchCollection<T> read( final Kryo kryo, final Input input,
+                                            final Class<HopscotchCollection<T>> klass ) {
+            return new HopscotchCollection<>(kryo, input);
         }
     }
 }

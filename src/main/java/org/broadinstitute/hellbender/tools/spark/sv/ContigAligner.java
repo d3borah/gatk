@@ -64,8 +64,11 @@ public class ContigAligner {
                                 if (assembledBreakpoint.region1.endInContig >= assembledBreakpoint.region2.startInContig) {
                                     assembledBreakpoint.homology = getSequence(contigsCollection, contigId, assembledBreakpoint.region2.startInContig, assembledBreakpoint.region1.endInContig);
                                 }
-                                //todo: add inserted sequence
+
                                 assembledBreakpoint.insertedSequence = "";
+                                if (assembledBreakpoint.region1.endInContig < assembledBreakpoint.region2.startInContig - 1) {
+                                    assembledBreakpoint.insertedSequence = getSequence(contigsCollection, contigId, assembledBreakpoint.region1.endInContig, assembledBreakpoint.region2.startInContig);
+                                }
 
                                 assembledBreakpoints.add(assembledBreakpoint);
                             }

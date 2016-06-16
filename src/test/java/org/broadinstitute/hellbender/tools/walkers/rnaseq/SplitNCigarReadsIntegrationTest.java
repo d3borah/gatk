@@ -1,4 +1,4 @@
-package org.broadinstitute.hellbender.tools;
+package org.broadinstitute.hellbender.tools.walkers.rnaseq;
 
 import org.broadinstitute.hellbender.CommandLineProgramTest;
 import org.broadinstitute.hellbender.utils.test.IntegrationTestSpec;

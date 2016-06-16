@@ -1,4 +1,4 @@
-package org.broadinstitute.hellbender.tools;
+package org.broadinstitute.hellbender.tools.walkers.rnaseq;
 
 import htsjdk.samtools.CigarElement;
 import htsjdk.samtools.CigarOperator;

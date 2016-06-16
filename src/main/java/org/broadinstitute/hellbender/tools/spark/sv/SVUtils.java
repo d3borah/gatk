@@ -2,7 +2,7 @@ package org.broadinstitute.hellbender.tools.spark.sv;
 
 import com.google.cloud.dataflow.sdk.options.PipelineOptions;
 import org.broadinstitute.hellbender.exceptions.GATKException;
-import org.broadinstitute.hellbender.tools.spark.utils.HopscotchHashSet;
+import org.broadinstitute.hellbender.tools.spark.utils.HopscotchSet;
 import org.broadinstitute.hellbender.utils.gcs.BucketUtils;
 
 import java.io.*;
@@ -25,7 +25,7 @@ public final class SVUtils {
         try ( final BufferedReader rdr =
                       new BufferedReader(new InputStreamReader(BucketUtils.openFile(kmersFile, popts))) ) {
             final long fileLength = BucketUtils.fileSize(kmersFile, popts);
-            kmers = new HopscotchHashSet<>((int)(fileLength/(kSize+1)));
+            kmers = new HopscotchSet<>((int)(fileLength/(kSize+1)));
             String line;
             while ( (line = rdr.readLine()) != null ) {
                 if ( line.length() != kSize ) {

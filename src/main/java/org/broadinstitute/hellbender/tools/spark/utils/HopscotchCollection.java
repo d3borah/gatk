@@ -115,10 +115,11 @@ public class HopscotchCollection<T> extends AbstractCollection<T> {
     }
 
     @Override
-    public boolean add( final T entry ) {
+    public boolean add( final T entry ) { return add(entry, entryCollides()); }
+
+    public boolean add( final T entry, final BiPredicate<T, T> collision ) {
         if ( entry == null ) throw new UnsupportedOperationException("This collection cannot contain null.");
         if ( size == capacity ) resize();
-        final BiPredicate<T, T> collision = entryCollides();
         try {
             return insert(entry, collision);
         } catch ( final IllegalStateException ise ) {
@@ -140,17 +141,7 @@ public class HopscotchCollection<T> extends AbstractCollection<T> {
     public int capacity() { return capacity; }
 
     @Override
-    public boolean contains( final Object key ) {
-        int bucketIndex = hashToIndex(key);
-        if ( !isChainHead(bucketIndex) ) return false;
-        if ( equivalent(buckets[bucketIndex], key) ) return true;
-        int offset;
-        while ( (offset = getOffset(bucketIndex)) != 0 ) {
-            bucketIndex = getIndex(bucketIndex, offset);
-            if ( equivalent(buckets[bucketIndex], key) ) return true;
-        }
-        return false;
-    }
+    public boolean contains( final Object key ) { return find(key) != null; }
 
     /** find an entry equivalent to the key, or return null */
     public T find( final Object key ) {

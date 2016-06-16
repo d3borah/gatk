@@ -7,7 +7,8 @@ import org.apache.spark.broadcast.Broadcast;
 import org.broadinstitute.hellbender.engine.spark.SparkContextFactory;
 import org.broadinstitute.hellbender.engine.spark.datasources.ReadsSparkSource;
 import org.broadinstitute.hellbender.exceptions.GATKException;
-import org.broadinstitute.hellbender.tools.spark.utils.HopscotchHashSet;
+import org.broadinstitute.hellbender.tools.spark.utils.HopscotchUniqueMultiMap;
+import org.broadinstitute.hellbender.tools.spark.utils.HopscotchSet;
 import org.broadinstitute.hellbender.utils.read.GATKRead;
 import org.broadinstitute.hellbender.utils.test.BaseTest;
 import org.testng.Assert;
@@ -15,10 +16,7 @@ import org.testng.annotations.Test;
 import scala.Tuple2;
 
 import java.io.*;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public final class FindBreakpointEvidenceSparkUnitTest extends BaseTest {
     private static final ReadMetadata.ReadGroupFragmentStatistics testStats =
@@ -44,8 +42,8 @@ public final class FindBreakpointEvidenceSparkUnitTest extends BaseTest {
     private final Broadcast<ReadMetadata> broadcastMetadata = ctx.broadcast(readMetadataExpected);
     private final FindBreakpointEvidenceSpark.Locations locations =
         new FindBreakpointEvidenceSpark.Locations(null, null, null, null, null, null);
-    private final HopscotchHashSet<FindBreakpointEvidenceSpark.QNameAndInterval> expectedQNames = loadExpectedQNames(qNamesFile);
-    private final HopscotchHashSet<FindBreakpointEvidenceSpark.QNameAndInterval> expectedAssemblyQNames = loadExpectedQNames(asmQNamesFile);
+    private final Set<String> expectedQNames = loadExpectedQNames(qNamesFile);
+    private final Set<String> expectedAssemblyQNames = loadExpectedQNames(asmQNamesFile);
     private final List<FindBreakpointEvidenceSpark.Interval> expectedIntervalList = Collections.singletonList(testInterval);
 
     @Test(groups = "spark")
@@ -63,14 +61,17 @@ public final class FindBreakpointEvidenceSparkUnitTest extends BaseTest {
 
     @Test(groups = "spark")
     public void getQNamesTest() {
-        final HopscotchHashSet<FindBreakpointEvidenceSpark.QNameAndInterval> qNamesSetActual =
-                FindBreakpointEvidenceSpark.getQNames(params, ctx, broadcastMetadata, expectedIntervalList, mappedReads);
-        Assert.assertEquals(qNamesSetActual, expectedQNames);
+        final Set<String> actualQNames = new HashSet<>();
+        FindBreakpointEvidenceSpark.getQNames(params, ctx, broadcastMetadata, expectedIntervalList, mappedReads)
+                .stream()
+                .map(qNameAndInterval -> qNameAndInterval.getKey())
+                .forEach(actualQNames::add);
+        Assert.assertEquals(actualQNames, expectedQNames);
     }
 
     @Test(groups = "spark")
     public void getKmerIntervalsTest() {
-        final HopscotchHashSet<SVKmer> killSet = new HopscotchHashSet<>(2);
+        final HopscotchSet<SVKmer> killSet = new HopscotchSet<>(2);
         killSet.add(SVKmerizer.toKmer("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"));
         killSet.add(SVKmerizer.toKmer("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"));
         final List<SVKmer> highCountKmers = FindBreakpointEvidenceSpark.getHighCountKmers(params, reads, locations, null);
@@ -78,33 +79,46 @@ public final class FindBreakpointEvidenceSparkUnitTest extends BaseTest {
         killSet.addAll(highCountKmers);
         Assert.assertEquals(killSet.size(), 2);
 
-        final Set<FindBreakpointEvidenceSpark.KmerAndInterval> actualKmerAndIntervalSet =
-                new HopscotchHashSet<>(
-                        FindBreakpointEvidenceSpark.getKmerIntervals(params, ctx, expectedQNames, killSet, reads, locations, null));
+        final HopscotchUniqueMultiMap<String, Integer, FindBreakpointEvidenceSpark.QNameAndInterval> qNameMultiMap =
+                new HopscotchUniqueMultiMap<>(expectedAssemblyQNames.size());
+        expectedQNames.stream()
+                .map(qName -> new FindBreakpointEvidenceSpark.QNameAndInterval(qName, 0))
+                .forEach(qNameMultiMap::add);
+        final HopscotchUniqueMultiMap<SVKmer, Integer, FindBreakpointEvidenceSpark.KmerAndInterval> actualKmerAndIntervalSet =
+                new HopscotchUniqueMultiMap<>(
+                        FindBreakpointEvidenceSpark.getKmerIntervals(params, ctx, qNameMultiMap, killSet, reads, locations, null));
         final Set<SVKmer> expectedKmers = SVUtils.readKmersFile(params.kSize, kmersFile, null);
         Assert.assertEquals(actualKmerAndIntervalSet.size(), expectedKmers.size());
         for ( final FindBreakpointEvidenceSpark.KmerAndInterval kmerAndInterval : actualKmerAndIntervalSet ) {
-            Assert.assertTrue(expectedKmers.contains(new SVKmer(kmerAndInterval)));
+            Assert.assertTrue(expectedKmers.contains(kmerAndInterval.getKey()));
         }
     }
 
     @Test(groups = "spark")
     public void getAssemblyQNamesTest() throws FileNotFoundException {
         final Set<SVKmer> expectedKmers = SVUtils.readKmersFile(params.kSize, kmersFile, null);
-        final HopscotchHashSet<FindBreakpointEvidenceSpark.KmerAndInterval> kmerAndIntervalSet =
-                new HopscotchHashSet<>(expectedKmers.size());
-        for ( final SVKmer kmer : expectedKmers ) {
-            kmerAndIntervalSet.add(new FindBreakpointEvidenceSpark.KmerAndInterval(kmer, 0));
-        }
-        final HopscotchHashSet<FindBreakpointEvidenceSpark.QNameAndInterval> actualAssemblyQNames =
-                new HopscotchHashSet<>(FindBreakpointEvidenceSpark.getAssemblyQNames(params, ctx, kmerAndIntervalSet, reads));
-        Assert.assertEquals(expectedAssemblyQNames.size(), actualAssemblyQNames.size());
+        final HopscotchUniqueMultiMap<SVKmer, Integer, FindBreakpointEvidenceSpark.KmerAndInterval> kmerAndIntervalSet =
+                new HopscotchUniqueMultiMap<>(expectedKmers.size());
+        expectedKmers.stream().
+                map(kmer -> new FindBreakpointEvidenceSpark.KmerAndInterval(kmer, 0))
+                .forEach(kmerAndIntervalSet::add);
+        final Set<String> actualAssemblyQNames = new HashSet<>();
+        FindBreakpointEvidenceSpark.getAssemblyQNames(params, ctx, kmerAndIntervalSet, reads)
+                .stream()
+                .map(qNameAndInterval -> qNameAndInterval.getKey())
+                .forEach(actualAssemblyQNames::add);
+        Assert.assertEquals(actualAssemblyQNames, expectedAssemblyQNames);
     }
 
     @Test(groups = "spark")
     public void generateFastqsTest() {
+        final HopscotchUniqueMultiMap<String, Integer, FindBreakpointEvidenceSpark.QNameAndInterval> qNameMultiMap =
+                new HopscotchUniqueMultiMap<>(expectedAssemblyQNames.size());
+        expectedAssemblyQNames.stream()
+                .map(qName -> new FindBreakpointEvidenceSpark.QNameAndInterval(qName, 0))
+                .forEach(qNameMultiMap::add);
         final String expectedFile = fastqFile;
-        FindBreakpointEvidenceSpark.generateFastqs(ctx, expectedAssemblyQNames, 1, reads,
+        FindBreakpointEvidenceSpark.generateFastqs(ctx, qNameMultiMap, 1, reads,
                 intervalAndFastqBytes -> compareFastqs(intervalAndFastqBytes, expectedFile));
     }
 
@@ -128,15 +142,15 @@ public final class FindBreakpointEvidenceSparkUnitTest extends BaseTest {
         }
     }
 
-    private HopscotchHashSet<FindBreakpointEvidenceSpark.QNameAndInterval> loadExpectedQNames( final String fileName ) {
-        final HopscotchHashSet<FindBreakpointEvidenceSpark.QNameAndInterval> expectedSet = new HopscotchHashSet<>(300);
+    private Set<String> loadExpectedQNames( final String fileName ) {
+        final HashSet<String> qNameSet = new HashSet<>();
         try( BufferedReader rdr = new BufferedReader(new FileReader(fileName)) ) {
             for ( String line = rdr.readLine(); line != null; line = rdr.readLine() ) {
-                expectedSet.add(new FindBreakpointEvidenceSpark.QNameAndInterval(line, 0));
+                qNameSet.add(line);
             }
         } catch ( final IOException ioe ) {
             throw new GATKException("Unable to read " + fileName);
         }
-        return expectedSet;
+        return qNameSet;
     }
 }
